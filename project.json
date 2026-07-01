@@ -1,0 +1,19 @@
+{
+  "overview": "A living 3D globe that watches the planet for fire and deforestation, notices what's new or worsening on its own, and quietly tells you what it's found.",
+  "features": [
+    "3D Earth globe with live fire and deforestation threat layers",
+    "Backend noticing engine that fetches environmental data and detects new or worsening events",
+    "Quiet severity-weighted feed that surfaces what the globe has noticed",
+    "Ambient globe drift and proactive auto-fly to the most severe recent event",
+    "Tactical instrument feel with refined HUD"
+  ],
+  "category": "showcase",
+  "tags": [
+    "3d-globe",
+    "environmental",
+    "tactical",
+    "real-time",
+    "internet-computer"
+  ],
+  "last_updated": "2026-07-01T18:31:08.016Z"
+}
