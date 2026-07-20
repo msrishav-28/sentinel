@@ -7,7 +7,7 @@ and quietly surfaces what's **new or worsening** on its own.
 Sentinel is a **standalone single-page app** (Vite + React + Three.js). It
 fetches live data directly in the browser and builds to static assets — no
 backend, no server, no API keys required. An *optional* serverless proxy adds a
-Google Earth Engine raster overlay (see [`/server`](server/README.md)).
+Google Earth Engine raster overlay (see [`docs/gee.md`](docs/gee.md)).
 
 ## What it does
 
@@ -29,7 +29,7 @@ Google Earth Engine raster overlay (see [`/server`](server/README.md)).
 | [NASA EONET v3](https://eonet.gsfc.nasa.gov/docs/v3) | Wildfires, volcanoes, severe storms, floods, landslides, drought, sea/lake ice, dust/haze | JSON, no key, HTTPS |
 | [Open-Meteo](https://open-meteo.com/) | Weather overlay + derived **extreme heat / cold** hazards | JSON, no key, CORS |
 | Curated indicators | **Global warming** & **ozone depletion** hotspots (documented, ongoing phenomena) | bundled, marked `INDICATOR` |
-| [Google Earth Engine](https://earthengine.google.com/) *(optional)* | Raster overlay: land temp / active fire / vegetation | via `/server` proxy |
+| [Google Earth Engine](https://earthengine.google.com/) *(optional)* | Raster overlay: land temp / active fire / vegetation / temp anomaly / ozone | via `api/` proxy |
 
 ## Architecture
 
@@ -51,28 +51,39 @@ fetch USGS + EONET ─▶ normalize (HazardEvent[]) ─▶ diff / notice ─▶ 
   - `*.test.ts` — vitest unit tests.
 - `src/frontend/src/GlobeView.tsx` — the 3D globe (tiles, camera, markers, overlay).
 - `src/frontend/src/App.tsx` — composition, HUD, layer toggles, proactive fly-to.
-- `server/` — optional serverless GEE tile proxy.
+- `api/gee-tiles.mjs` — optional serverless GEE tile proxy (Vercel function).
 
 ## Develop
 
+From the repo root (root scripts fan out to the frontend workspace):
+
 ```bash
-cd src/frontend
 pnpm install --prefer-offline
 pnpm dev          # live globe at http://localhost:5173 (add ?demo for offline)
 pnpm test         # vitest unit tests
 pnpm typecheck    # tsc --noEmit
 pnpm check        # biome lint
-pnpm build        # static bundle in dist/
+pnpm build        # static bundle in src/frontend/dist/
 ```
 
-## Deploy
+CI (`.github/workflows/ci.yml`) runs typecheck · lint · test · build on every
+push and pull request.
 
-`pnpm build` produces a static `dist/` — serve from any static host (Vercel,
-Netlify, GitHub Pages, Cloudflare Pages) or `pnpm preview` locally.
+## Deploy to Vercel
 
-The Earth Engine overlay is entirely optional; Sentinel works without it. To
-enable it, deploy the [`/server`](server/README.md) function and set
-`VITE_GEE_TILES_URL` (see `src/frontend/.env.example`).
+The repo ships a `vercel.json`, so deployment is one step:
+
+1. Import the repo into Vercel (or `vercel --prod` from the CLI). No settings to
+   change — `vercel.json` sets the install/build commands and output directory.
+2. Done. The static globe is live and pulls its data client-side.
+
+`pnpm build` also produces a plain static `src/frontend/dist/` that serves from
+any static host (Netlify, GitHub Pages, Cloudflare Pages, S3) — `pnpm preview`
+runs it locally.
+
+The Earth Engine overlay is **optional** and off by default; Sentinel never
+crashes without it. To enable it, follow [`docs/gee.md`](docs/gee.md) (add the
+`@google/earthengine` dep + set `GEE_SERVICE_ACCOUNT_JSON`).
 
 ## Tech stack
 

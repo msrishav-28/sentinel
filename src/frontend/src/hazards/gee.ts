@@ -5,12 +5,19 @@
 // optional: any failure (proxy not deployed, GEE not configured, network error)
 // resolves to null and the app simply shows no overlay.
 
-export type GeeLayerId = "temperature" | "fire" | "vegetation";
+export type GeeLayerId =
+  | "temperature"
+  | "fire"
+  | "vegetation"
+  | "warming"
+  | "ozone";
 
 export const GEE_LAYERS: Array<{ id: GeeLayerId; label: string }> = [
   { id: "temperature", label: "LAND TEMP" },
   { id: "fire", label: "ACTIVE FIRE" },
   { id: "vegetation", label: "VEGETATION" },
+  { id: "warming", label: "TEMP ANOMALY" },
+  { id: "ozone", label: "OZONE" },
 ];
 
 interface GeeResponse {

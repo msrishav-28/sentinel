@@ -2,7 +2,7 @@
 
 Sentinel is a standalone Vite + React + Three.js single-page app. No backend,
 no canister, no CSS framework — it fetches live hazard data directly in the
-browser and builds to static assets. An optional serverless proxy in `/server`
+browser and builds to static assets. An optional serverless proxy in `/api`
 adds a Google Earth Engine raster overlay.
 
 ## Verified Commands
@@ -27,7 +27,10 @@ Run from `src/frontend/` (or use the root passthrough scripts):
 - `src/frontend/src/GlobeView.tsx` — the 3D globe (tiles, camera, markers,
   optional raster overlay). Treat its core as stable; extend via additive props.
 - `src/frontend/src/App.tsx` — composition, HUD, per-kind layer toggles.
-- `server/` — optional Earth Engine tile proxy (its own package.json).
+- `api/gee-tiles.mjs` — optional Earth Engine tile proxy (Vercel serverless
+  function). Degrades to a no-op when the dep/credential is absent — see
+  `docs/gee.md`.
+- `vercel.json` — Vercel build config. CI is `.github/workflows/ci.yml`.
 
 ## Conventions
 
