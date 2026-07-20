@@ -16,7 +16,11 @@ export type HazardKind =
   | "landslide"
   | "drought"
   | "seaLakeIce"
-  | "dustHaze";
+  | "dustHaze"
+  | "extremeHeat"
+  | "extremeCold"
+  | "globalWarming"
+  | "ozone";
 
 // Severity is a 1..5 weighting, low → critical, shared across all kinds so the
 // feed, the proactive surfacing, and the marker sizing can rank uniformly.
@@ -101,6 +105,30 @@ export const KIND_META: Record<HazardKind, KindMeta> = {
     color: "#c9a06a",
     defaultSeverity: 2,
   },
+  extremeHeat: {
+    label: "EXTREME HEAT",
+    glyph: "♨",
+    color: "#ff4d2e",
+    defaultSeverity: 3,
+  },
+  extremeCold: {
+    label: "EXTREME COLD",
+    glyph: "❆",
+    color: "#66d0ff",
+    defaultSeverity: 3,
+  },
+  globalWarming: {
+    label: "GLOBAL WARMING",
+    glyph: "🌡",
+    color: "#ff8a3d",
+    defaultSeverity: 3,
+  },
+  ozone: {
+    label: "OZONE DEPLETION",
+    glyph: "◍",
+    color: "#b892ff",
+    defaultSeverity: 3,
+  },
 };
 
 // Ordered list of the kinds, for stable iteration (sidebar toggles, legends).
@@ -114,6 +142,10 @@ export const HAZARD_KINDS: HazardKind[] = [
   "drought",
   "seaLakeIce",
   "dustHaze",
+  "extremeHeat",
+  "extremeCold",
+  "globalWarming",
+  "ozone",
 ];
 
 // Severity colour ramp (cyan → amber → red) matching the HUD aesthetic.

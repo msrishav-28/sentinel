@@ -197,6 +197,46 @@ const SEEDS: Seed[] = [
     agoMin: 44,
     magnitude: 0,
   },
+  // Extreme heat / cold (normally derived live from weather)
+  {
+    kind: "extremeHeat",
+    lat: 28.6,
+    lng: 77.2,
+    title: "Extreme heat at Delhi (46°C)",
+    severity: 4,
+    agoMin: 8,
+    magnitude: 46,
+    magnitudeUnit: "°C",
+  },
+  {
+    kind: "extremeCold",
+    lat: 62.0,
+    lng: 129.7,
+    title: "Extreme cold at Yakutsk (-38°C)",
+    severity: 4,
+    agoMin: 35,
+    magnitude: -38,
+    magnitudeUnit: "°C",
+  },
+  // Climate indicators
+  {
+    kind: "globalWarming",
+    lat: 80.0,
+    lng: 0.0,
+    title: "Arctic amplification — warming ~4× global rate",
+    severity: 5,
+    agoMin: 15,
+    magnitude: 0,
+  },
+  {
+    kind: "ozone",
+    lat: -82.0,
+    lng: 0.0,
+    title: "Antarctic ozone hole (seasonal)",
+    severity: 4,
+    agoMin: 50,
+    magnitude: 0,
+  },
 ];
 
 export function seedHazards(now = Date.now()): HazardEvent[] {

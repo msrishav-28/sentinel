@@ -6,6 +6,7 @@ import GlobeView, {
   type HazardMarker,
   type WeatherPoint,
 } from "./GlobeView";
+import { climateIndicators, deriveExtremeTemp } from "./hazards/climate";
 import { seedHazards } from "./hazards/demo";
 import {
   GEE_LAYERS,
@@ -54,20 +55,7 @@ interface FeedEvent {
   message: string;
 }
 
-// ─── City Data ───────────────────────────────────────────────────────────────
-const CITIES: Record<string, { lat: number; lng: number }> = {
-  "Washington DC": { lat: 38.9, lng: -77.0 },
-  Austin: { lat: 30.2672, lng: -97.7431 },
-  "San Francisco": { lat: 37.7749, lng: -122.4194 },
-  "New York": { lat: 40.7128, lng: -74.006 },
-  Tokyo: { lat: 35.6762, lng: 139.6503 },
-  London: { lat: 51.5074, lng: -0.1278 },
-  Paris: { lat: 48.8566, lng: 2.3522 },
-  Dubai: { lat: 25.2048, lng: 55.2708 },
-  Sydney: { lat: -33.8688, lng: 151.2093 },
-  "S\u00e3o Paulo": { lat: -23.5505, lng: -46.6333 },
-};
-
+// ─── Weather cities (for the optional weather overlay + extreme-temp hazards) ──
 const WEATHER_CITIES = [
   // North America
   { city: "New York", lat: 40.71, lon: -74.01 },
@@ -367,16 +355,6 @@ function toDMS(deg: number, isLat: boolean): string {
   return `${String(d).padStart(isLat ? 2 : 3, "0")}°${String(m).padStart(2, "0")}'${String(s).padStart(5, "0")}"${dir}`;
 }
 
-function getGSD(dist: number): string {
-  const gsd = dist * 1000;
-  return gsd < 10 ? gsd.toFixed(1) : Math.round(gsd).toString();
-}
-
-function getNIIRS(dist: number): string {
-  const niirs = Math.min(9, Math.max(0, (4.0 - dist) * 4));
-  return niirs.toFixed(1);
-}
-
 function getMGRS(lat: number, lng: number): string {
   const zone = Math.floor((lng + 180) / 6) + 1;
   const band = "CDEFGHJKLMNPQRSTUVWX"[Math.min(19, Math.floor((lat + 80) / 8))];
@@ -574,9 +552,6 @@ export default function App() {
   const [geeOpacity, setGeeOpacity] = useState(60);
   const [bloom, setBloom] = useState({ active: true, value: 50 });
   const [sharpen, setSharpen] = useState({ active: true, value: 56 });
-  const [activeCity, setActiveCity] = useState(() =>
-    getStorage("sentinel_city", "Washington DC"),
-  );
   // targetCenter drives GlobeView camera fly-to
   const [targetCenter, setTargetCenter] = useState<{
     lat: number;
@@ -585,13 +560,14 @@ export default function App() {
 
   const [mapCenter, setMapCenter] = useState({ lat: 38.9, lng: -77.0 });
   const [globeZoomDist, setGlobeZoomDist] = useState(2.5);
-  const [showCityLabels, setShowCityLabels] = useState(true);
   const [utcTime, setUtcTime] = useState("");
   const [feedExpanded, setFeedExpanded] = useState(true);
   const [lastWeatherUpdate, setLastWeatherUpdate] = useState("never");
 
-  // Weather overlay data (browser-fetched context layer).
+  // Weather overlay data (browser-fetched context layer). A ref mirrors it so
+  // the hazard pipeline can derive extreme heat/cold without re-subscribing.
   const [weatherData, setWeatherData] = useState<WeatherPoint[]>([]);
+  const weatherRef = useRef<WeatherPoint[]>([]);
 
   // ── Unified hazard data (browser is the sensor) ──
   const [hazards, setHazards] = useState<HazardEvent[]>([]);
@@ -608,6 +584,8 @@ export default function App() {
     (h) => h.kind !== "earthquake" && h.kind !== "wildfire",
   );
   const eqCount = earthquakes.length;
+  const criticalCount = hazards.filter((h) => h.severity >= 5).length;
+  const severeCount = hazards.filter((h) => h.severity === 4).length;
 
   // Selected items (detail panels rendered OUTSIDE the circular clip)
   const [selectedEq, setSelectedEq] = useState<EqItem | null>(null);
@@ -661,9 +639,10 @@ export default function App() {
   const surfacedNoticeIdsRef = useRef<Set<string>>(new Set());
 
   const refreshHazards = useCallback(async () => {
+    const now = Date.now();
     let result: Awaited<ReturnType<typeof fetchAllHazards>>;
     if (DEMO_MODE) {
-      result = { hazards: seedHazards(), sourceOk: { DEMO: true } };
+      result = { hazards: seedHazards(now), sourceOk: { DEMO: true } };
     } else {
       try {
         result = await fetchAllHazards();
@@ -671,8 +650,17 @@ export default function App() {
         setLastHazardUpdate("failed");
         return;
       }
+      // Climate hazards ride on top: extreme heat/cold derived from the live
+      // weather readings, plus curated global-warming / ozone indicators.
+      result = {
+        hazards: [
+          ...result.hazards,
+          ...deriveExtremeTemp(weatherRef.current, now),
+          ...climateIndicators(now),
+        ],
+        sourceOk: result.sourceOk,
+      };
     }
-    const now = Date.now();
     const { notices: fresh, index } = diffHazards(
       hazardIndexRef.current,
       result.hazards,
@@ -851,6 +839,7 @@ export default function App() {
         };
       });
       setWeatherData(points);
+      weatherRef.current = points;
       setLastWeatherUpdate(new Date().toLocaleTimeString());
       const sorted = [...points].sort((a, b) => a.temp - b.temp);
       addFeed(
@@ -1389,18 +1378,6 @@ export default function App() {
             }}
             onCenterChange={(lat, lng) => setMapCenter({ lat, lng })}
             onZoomChange={setGlobeZoomDist}
-            showCityLabels={showCityLabels}
-            cityData={Object.entries(CITIES).map(([name, c]) => ({
-              name,
-              lat: c.lat,
-              lng: c.lng,
-            }))}
-            onCityClick={(name, lat, lng) => {
-              setActiveCity(name);
-              setStorage("sentinel_city", name);
-              setTargetCenter({ lat, lng });
-              addFeed("SYSTEM", `Navigating to ${name}`);
-            }}
           />
           {/* Vignette */}
           <div className="map-vignette" />
@@ -1746,7 +1723,7 @@ export default function App() {
       {/* ── HUD Overlays (main wrapper, tracks sidebar widths) ── */}
       {hudVisible && (
         <>
-          {/* PANOPTIC stats bar */}
+          {/* Hazard status bar */}
           <div
             style={{
               position: "absolute",
@@ -1798,8 +1775,8 @@ export default function App() {
                 marginTop: 1,
               }}
             >
-              GLOBE 3D · {activeCity.toUpperCase()} · DIST:
-              {globeZoomDist.toFixed(2)} AU
+              GLOBE 3D · {mapCenter.lat.toFixed(1)}°, {mapCenter.lng.toFixed(1)}
+              ° · DIST {globeZoomDist.toFixed(2)}
             </div>
           </div>
 
@@ -1820,7 +1797,7 @@ export default function App() {
               <span style={{ color: "#ff3333" }}>●</span> REC {utcTime}
             </div>
             <div style={{ color: "rgba(0,255,255,0.5)", fontSize: 8 }}>
-              ORB: 47439 PASS: DESC-179
+              UPD {lastHazardUpdate}
             </div>
             <div style={{ marginTop: 6 }}>
               <div style={{ color: "rgba(0,255,255,0.4)", fontSize: 7 }}>
@@ -1872,12 +1849,11 @@ export default function App() {
               transition: "right 0.3s ease",
             }}
           >
-            <div style={{ color: "#00ffff", fontSize: 9 }}>
-              GLOBE 3D · GSD:{getGSD(globeZoomDist)} NIIRS:
-              {getNIIRS(globeZoomDist)}
+            <div style={{ color: "#ff6b35", fontSize: 9 }}>
+              {criticalCount} CRITICAL · {severeCount} SEVERE
             </div>
             <div style={{ color: "rgba(0,255,255,0.6)", fontSize: 8 }}>
-              DIST:{globeZoomDist.toFixed(3)} · SUN: -50.7° EL
+              TRACKING {hazards.length} HAZARDS · UPD {lastHazardUpdate}
             </div>
             {weatherOn &&
               weatherData.length > 0 &&
@@ -2034,18 +2010,6 @@ export default function App() {
             </button>
           </div>
 
-          {/* LABELS TOGGLE */}
-          <div style={{ marginBottom: 8 }}>
-            <button
-              type="button"
-              data-ocid="controls.city_labels.toggle"
-              onClick={() => setShowCityLabels((v) => !v)}
-              style={btnStyle(showCityLabels)}
-            >
-              CITY LABELS {showCityLabels ? "ON" : "OFF"}
-            </button>
-          </div>
-
           {/* EARTH ENGINE OVERLAY (only when a proxy is configured) */}
           {geeTemplate && (
             <div style={{ marginBottom: 12 }}>
@@ -2165,7 +2129,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* CITY NAV */}
+          {/* NAVIGATION */}
           <div style={{ marginBottom: 12 }}>
             <div
               style={{
@@ -2175,47 +2139,34 @@ export default function App() {
                 letterSpacing: "0.1em",
               }}
             >
-              CITY NAV
+              NAVIGATION
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {Object.entries(CITIES).map(([name, coords]) => (
-                <button
-                  key={name}
-                  type="button"
-                  data-ocid={`city.${name
-                    .replace(/\s+/g, "-")
-                    .toLowerCase()}.button`}
-                  onClick={() => {
-                    setActiveCity(name);
-                    setStorage("sentinel_city", name);
-                    // Fly camera to this city
-                    setTargetCenter({ lat: coords.lat, lng: coords.lng });
-                    addFeed("SYSTEM", `Navigating to ${name}`);
-                  }}
-                  style={{
-                    padding: "2px 8px",
-                    fontSize: 8,
-                    textAlign: "left",
-                    cursor: "pointer",
-                    fontFamily: "monospace",
-                    letterSpacing: "0.06em",
-                    background:
-                      activeCity === name
-                        ? "rgba(0,255,255,0.12)"
-                        : "transparent",
-                    border: `1px solid ${
-                      activeCity === name
-                        ? "rgba(0,255,255,0.4)"
-                        : "rgba(0,255,255,0.1)"
-                    }`,
-                    color:
-                      activeCity === name ? "#00ffff" : "rgba(0,255,255,0.5)",
-                  }}
-                >
-                  {name.toUpperCase()}
-                </button>
-              ))}
-            </div>
+            <button
+              type="button"
+              data-ocid="controls.jump_severest.button"
+              onClick={() => {
+                const target =
+                  rankNotices(notices)[0] ??
+                  [...hazards].sort((a, b) => b.severity - a.severity)[0];
+                if (!target) {
+                  addFeed("SYSTEM", "No active hazards to jump to");
+                  return;
+                }
+                setTargetCenter({ lat: target.lat, lng: target.lng });
+                addFeed(
+                  "SYSTEM",
+                  `Jumping to severest — ${KIND_META[target.kind].label}`,
+                );
+              }}
+              style={{
+                ...btnStyle(false),
+                width: "100%",
+                padding: "6px 8px",
+                textAlign: "left",
+              }}
+            >
+              ⤢ JUMP TO SEVEREST EVENT
+            </button>
           </div>
         </div>
       </div>

@@ -21,8 +21,9 @@ Run from `src/frontend/` (or use the root passthrough scripts):
 
 - `src/frontend/src/hazards/` — portable core: unified `HazardEvent` model
   (`types.ts`), live source adapters (`sources.ts`: USGS + NASA EONET), the
-  diff/noticing engine (`noticing.ts`), demo seed (`demo.ts`), optional GEE
-  client (`gee.ts`), and their `*.test.ts` suites.
+  diff/noticing engine (`noticing.ts`), climate hazards (`climate.ts`: extreme
+  heat/cold from weather + curated warming/ozone indicators), demo seed
+  (`demo.ts`), optional GEE client (`gee.ts`), and their `*.test.ts` suites.
 - `src/frontend/src/GlobeView.tsx` — the 3D globe (tiles, camera, markers,
   optional raster overlay). Treat its core as stable; extend via additive props.
 - `src/frontend/src/App.tsx` — composition, HUD, per-kind layer toggles.

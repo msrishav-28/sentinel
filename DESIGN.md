@@ -21,8 +21,11 @@ and quietly surfaces it. Standalone web app — no backend required.
 ## Hazard kinds
 
 Earthquake · wildfire · volcano · severe storm · flood · landslide · drought ·
-sea/lake ice · dust/haze. Each has a color + glyph and a 1–5 severity that
-drives marker size and the noticing feed.
+sea/lake ice · dust/haze · extreme heat · extreme cold · global warming ·
+ozone depletion. Each has a color + glyph and a 1–5 severity that drives marker
+size and the noticing feed. Extreme heat/cold are derived live from the weather
+layer; global-warming and ozone-depletion are curated indicators of ongoing
+phenomena (clearly sourced as `INDICATOR`, not real-time detections).
 
 ## Color Palette (OKLCH)
 

@@ -27,7 +27,8 @@ Google Earth Engine raster overlay (see [`/server`](server/README.md)).
 |---|---|---|
 | [USGS Earthquake feeds](https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php) | Earthquakes (past 24h) | GeoJSON, no key, CORS |
 | [NASA EONET v3](https://eonet.gsfc.nasa.gov/docs/v3) | Wildfires, volcanoes, severe storms, floods, landslides, drought, sea/lake ice, dust/haze | JSON, no key, HTTPS |
-| [Open-Meteo](https://open-meteo.com/) | Weather overlay (context) | JSON, no key, CORS |
+| [Open-Meteo](https://open-meteo.com/) | Weather overlay + derived **extreme heat / cold** hazards | JSON, no key, CORS |
+| Curated indicators | **Global warming** & **ozone depletion** hotspots (documented, ongoing phenomena) | bundled, marked `INDICATOR` |
 | [Google Earth Engine](https://earthengine.google.com/) *(optional)* | Raster overlay: land temp / active fire / vegetation | via `/server` proxy |
 
 ## Architecture
@@ -44,6 +45,7 @@ fetch USGS + EONET ─▶ normalize (HazardEvent[]) ─▶ diff / notice ─▶ 
   - `types.ts` — unified `HazardEvent` model, kinds, severity, per-kind metadata.
   - `sources.ts` — live source adapters (USGS, EONET) → `HazardEvent[]`.
   - `noticing.ts` — the diff/notice engine (new / escalating / worsening).
+  - `climate.ts` — extreme heat/cold derived from weather + curated global-warming / ozone indicators.
   - `demo.ts` — seeded dataset for `?demo` / offline.
   - `gee.ts` — optional Earth Engine overlay client.
   - `*.test.ts` — vitest unit tests.

@@ -84,9 +84,6 @@ interface GlobeViewProps {
   onHazardClick?: (id: string) => void;
   onCenterChange: (lat: number, lng: number) => void;
   onZoomChange: (distance: number) => void;
-  cityData: Array<{ name: string; lat: number; lng: number }>;
-  onCityClick: (name: string, lat: number, lng: number) => void;
-  showCityLabels?: boolean;
   /** When true (default), the globe slowly drifts via OrbitControls autoRotate.
    *  Set to false while the user is actively piloting to pause ambient drift. */
   autoRotate?: boolean;
@@ -535,163 +532,6 @@ function RasterOverlay({
   return <group ref={groupRef} />;
 }
 
-// ─── Three.js sprite labels (no HTML canvas overlay) ──────────────────────────
-// Pure WebGL sprites rendered at renderOrder=9000 with depthTest=false.
-// They never touch the tile render pipeline.
-
-const labelTexCache = new Map<string, THREE.CanvasTexture>();
-
-function makeLabelTexture(text: string, color: string): THREE.CanvasTexture {
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d")!;
-  ctx.font = "bold 26px monospace";
-  const textW = Math.ceil(ctx.measureText(text).width);
-  canvas.width = textW + 16;
-  canvas.height = 32;
-  ctx.font = "bold 26px monospace";
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = color;
-  ctx.fillText(text, 8, 24);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.needsUpdate = true;
-  return tex;
-}
-
-function getCachedLabelTex(text: string, color: string): THREE.CanvasTexture {
-  const k = `${text}|${color}`;
-  if (!labelTexCache.has(k)) {
-    labelTexCache.set(k, makeLabelTexture(text, color));
-  }
-  return labelTexCache.get(k)!;
-}
-
-function CityLabel({
-  city,
-}: { city: { name: string; lat: number; lng: number } }) {
-  const text = city.name.toUpperCase();
-  const [bx, by, bz] = latLngToVec3(city.lat, city.lng, 1.001);
-  const texture = useMemo(() => getCachedLabelTex(text, "#00ffcc"), [text]);
-  const aspect = texture.image
-    ? (texture.image as HTMLCanvasElement).width /
-      (texture.image as HTMLCanvasElement).height
-    : 5;
-  const sh = 0.007;
-  const sw = sh * aspect;
-  const norm = new THREE.Vector3(bx, by, bz).normalize();
-  const east = new THREE.Vector3(0, 1, 0).cross(norm).normalize();
-  const down = norm.clone().cross(east).normalize().negate();
-  const baseOffset = east
-    .clone()
-    .multiplyScalar(sw * 0.6)
-    .add(down.clone().multiplyScalar(sh * 0.5));
-  const spriteRef = useRef<THREE.Sprite>(null!);
-  const { camera } = useThree();
-  useFrame(() => {
-    if (!spriteRef.current) return;
-    const cdist = camera.position.length();
-    const scale = cdist / 2.5;
-    spriteRef.current.position.set(
-      bx + baseOffset.x * scale,
-      by + baseOffset.y * scale,
-      bz + baseOffset.z * scale,
-    );
-  });
-  return (
-    <sprite
-      ref={spriteRef}
-      position={[bx + baseOffset.x, by + baseOffset.y, bz + baseOffset.z]}
-      scale={[sw, sh, 1]}
-      renderOrder={9000}
-    >
-      <spriteMaterial
-        map={texture}
-        transparent
-        alphaTest={0.01}
-        depthWrite={false}
-        depthTest={false}
-        sizeAttenuation={false}
-      />
-    </sprite>
-  );
-}
-
-// ─── City marker ──────────────────────────────────────────────────────────────
-
-function CityMarker({
-  lat,
-  lng,
-  onClick,
-}: {
-  name: string;
-  lat: number;
-  lng: number;
-  onClick: () => void;
-  visible: boolean;
-}) {
-  const [x, y, z] = latLngToVec3(lat, lng, 1.001);
-
-  const pinTexture = useMemo(() => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 32;
-    canvas.height = 32;
-    const ctx = canvas.getContext("2d")!;
-    ctx.clearRect(0, 0, 32, 32);
-    ctx.strokeStyle = "#00ffcc";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(16, 16, 10, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.fillStyle = "#00ffcc";
-    ctx.beginPath();
-    ctx.arc(16, 16, 4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(16, 4);
-    ctx.lineTo(16, 12);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(16, 20);
-    ctx.lineTo(16, 28);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(4, 16);
-    ctx.lineTo(12, 16);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(20, 16);
-    ctx.lineTo(28, 16);
-    ctx.stroke();
-    return new THREE.CanvasTexture(canvas);
-  }, []);
-
-  useEffect(() => () => pinTexture.dispose(), [pinTexture]);
-
-  return (
-    <group>
-      <sprite position={[x, y, z]} scale={[0.013, 0.013, 1]} renderOrder={9000}>
-        <spriteMaterial
-          map={pinTexture}
-          transparent
-          depthWrite={false}
-          depthTest={false}
-          sizeAttenuation={false}
-        />
-      </sprite>
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: Three.js mesh */}
-      <mesh
-        position={[x, y, z]}
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          onClick();
-        }}
-      >
-        <sphereGeometry args={[0.02, 6, 6]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
-    </group>
-  );
-}
-
 function WeatherMarker({ point }: { point: WeatherPoint }) {
   const [x, y, z] = latLngToVec3(point.lat, point.lon, 1.003);
   const temp = point.temp;
@@ -1138,12 +978,9 @@ function Earth({
   onHazardClick,
   onCenterChange,
   onZoomChange,
-  cityData,
-  onCityClick,
   initCenter,
   targetCenter,
   cameraDistRef,
-  showCityLabels: showCityLabelsProp = true,
 }: EarthProps) {
   const { camera } = useThree();
   const animTargetRef = useRef<THREE.Vector3 | null>(null);
@@ -1356,22 +1193,6 @@ function Earth({
       {/* ── WEATHER ── */}
       {layers.weather &&
         weatherData.map((w) => <WeatherMarker key={`w-${w.city}`} point={w} />)}
-
-      {/* ── CITIES ── */}
-      {cityData
-        .filter((city) => isVisible(city.lat, city.lng))
-        .map((city) => (
-          <group key={`city-${city.name}`}>
-            <CityMarker
-              name={city.name}
-              lat={city.lat}
-              lng={city.lng}
-              onClick={() => onCityClick(city.name, city.lat, city.lng)}
-              visible={showCityLabelsProp}
-            />
-            {showCityLabelsProp && <CityLabel city={city} />}
-          </group>
-        ))}
     </>
   );
 }
