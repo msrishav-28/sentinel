@@ -5,7 +5,7 @@
     "Unified hazard model with per-kind severity weighting and per-kind layer toggles",
     "Client-side noticing engine that surfaces only new, escalating, or worsening events",
     "Ambient globe drift and proactive auto-fly to the most severe recent event",
-    "Tactical instrument HUD on the Internet Computer"
+    "Tactical instrument HUD, deployable as a standalone static site"
   ],
   "category": "showcase",
   "tags": [
@@ -14,7 +14,7 @@
     "multi-hazard",
     "tactical",
     "real-time",
-    "internet-computer"
+    "web-app"
   ],
   "last_updated": "2026-07-20T00:00:00.000Z"
 }

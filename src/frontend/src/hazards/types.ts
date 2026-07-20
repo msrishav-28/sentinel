@@ -2,8 +2,8 @@
 //
 // Sentinel monitors many kinds of natural disaster from several live sources
 // (USGS, NASA EONET, …). Rather than carry a bespoke shape per source, every
-// adapter normalizes into a single `HazardEvent`. The globe, the noticing
-// engine, and the on-chain canister all speak this one shape.
+// adapter normalizes into a single `HazardEvent`. The globe, the source
+// adapters, and the noticing engine all speak this one shape.
 
 // The kinds of natural hazard Sentinel tracks. Structured as a string union so
 // new kinds can be appended without touching the engine.

@@ -635,10 +635,10 @@ export default function App() {
     ]);
   }, []);
 
-  // ── Unified hazard pipeline (browser is the sensor) ──
-  // The browser fetches every live source directly — no IC outcall consensus to
-  // fight — normalizes into HazardEvent[], and runs the noticing engine locally
-  // so the globe stays live even if the canister is unreachable.
+  // ── Unified hazard pipeline ──
+  // Fetch every live source directly in the browser, normalize into
+  // HazardEvent[], and run the noticing engine locally. A dead source degrades
+  // gracefully (its adapter returns []) without taking down the globe.
   const surfacedNoticeIdsRef = useRef<Set<string>>(new Set());
 
   const refreshHazards = useCallback(async () => {
@@ -1260,17 +1260,11 @@ export default function App() {
             padding: "6px 12px",
             color: "rgba(0,255,255,0.2)",
             fontSize: 7,
+            lineHeight: 1.5,
           }}
         >
-          © {new Date().getFullYear()} · BUILT WITH{" "}
-          <a
-            href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
-            target="_blank"
-            rel="noreferrer"
-            style={{ color: "rgba(0,255,255,0.4)", textDecoration: "none" }}
-          >
-            CAFFEINE.AI
-          </a>
+          © {new Date().getFullYear()} SENTINEL · DATA: USGS · NASA EONET ·
+          OPEN-METEO
         </div>
       </div>
 
