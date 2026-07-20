@@ -20,11 +20,7 @@
     "incremental": true,
     "tsBuildInfoFile": "./node_modules/.cache/tsbuildinfo",
     "jsx": "react-jsx",
-    "types": ["vite/client", "node"],
-    "paths": {
-      "declarations/*": ["../declarations/*"],
-      "@/*": ["./src/*"]
-    }
+    "types": ["vite/client", "node"]
   },
   "include": ["src"],
   "exclude": [

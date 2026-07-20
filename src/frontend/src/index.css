@@ -1,9 +1,20 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Minimal reset (replaces Tailwind Preflight — the app is styled with inline
+   styles + the utility classes below, so no utility framework is needed). */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
 
 /* ============================================================
-   CEREBRO — Tactical Environmental Watcher Theme
+   SENTINEL — Tactical Planetary Hazard Monitor Theme
    OKLCH token system. Cyan tactical foreground, orange accent,
    red destructive, near-black background. Extended with
    environmental threat tokens: fire ember, deforestation fade,
@@ -171,58 +182,6 @@
   --ambient-haze: 0.4 0.04 200;
   --proactive-amber: 0.78 0.16 75;
   --proactive-amber-soft: 0.7 0.12 85;
-}
-
-@theme inline {
-  --color-background: oklch(var(--background));
-  --color-foreground: oklch(var(--foreground));
-  --color-card: oklch(var(--card));
-  --color-card-foreground: oklch(var(--card-foreground));
-  --color-popover: oklch(var(--popover));
-  --color-popover-foreground: oklch(var(--popover-foreground));
-  --color-primary: oklch(var(--primary));
-  --color-primary-foreground: oklch(var(--primary-foreground));
-  --color-secondary: oklch(var(--secondary));
-  --color-secondary-foreground: oklch(var(--secondary-foreground));
-  --color-muted: oklch(var(--muted));
-  --color-muted-foreground: oklch(var(--muted-foreground));
-  --color-accent: oklch(var(--accent));
-  --color-accent-foreground: oklch(var(--accent-foreground));
-  --color-destructive: oklch(var(--destructive));
-  --color-destructive-foreground: oklch(var(--destructive-foreground));
-  --color-border: oklch(var(--border));
-  --color-input: oklch(var(--input));
-  --color-ring: oklch(var(--ring));
-  --color-chart-1: oklch(var(--chart-1));
-  --color-chart-2: oklch(var(--chart-2));
-  --color-chart-3: oklch(var(--chart-3));
-  --color-chart-4: oklch(var(--chart-4));
-  --color-chart-5: oklch(var(--chart-5));
-  --color-sidebar: oklch(var(--sidebar));
-  --color-sidebar-foreground: oklch(var(--sidebar-foreground));
-  --color-sidebar-primary: oklch(var(--sidebar-primary));
-  --color-sidebar-primary-foreground: oklch(var(--sidebar-primary-foreground));
-  --color-sidebar-accent: oklch(var(--sidebar-accent));
-  --color-sidebar-accent-foreground: oklch(var(--sidebar-accent-foreground));
-  --color-sidebar-border: oklch(var(--sidebar-border));
-  --color-sidebar-ring: oklch(var(--sidebar-ring));
-
-  /* Environmental threat colors as theme keys */
-  --color-fire-ember: oklch(var(--fire-ember));
-  --color-fire-ember-hot: oklch(var(--fire-ember-hot));
-  --color-deforest-green: oklch(var(--deforest-green));
-  --color-deforest-brown: oklch(var(--deforest-brown));
-  --color-ambient-cyan: oklch(var(--ambient-cyan));
-  --color-ambient-haze: oklch(var(--ambient-haze));
-  --color-proactive-amber: oklch(var(--proactive-amber));
-  --color-proactive-amber-soft: oklch(var(--proactive-amber-soft));
-
-  --font-display: "JetBrains Mono";
-  --font-body: "Geist Mono";
-  --font-mono: "JetBrains Mono";
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
 }
 
 @layer base {
