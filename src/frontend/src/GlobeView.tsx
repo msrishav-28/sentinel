@@ -46,11 +46,26 @@ export interface DeforestationItem {
   source: string;
 }
 
+// Generic multi-hazard marker (volcano, storm, flood, landslide, …). Rendered
+// as a colour/size-coded blip reusing the earthquake marker vocabulary, so new
+// hazard kinds can appear on the globe without new bespoke geometry.
+export interface HazardMarker {
+  id: string;
+  lat: number;
+  lng: number;
+  color: string;
+  size: number; // base sphere radius in globe units
+  kind: string;
+}
+
 interface GlobeViewProps {
   eqData: EqItem[];
   weatherData: WeatherPoint[];
   fireData: FireItem[];
   deforestationData: DeforestationItem[];
+  /** Generic multi-hazard blips (volcano, storm, flood, …). Optional and
+   *  additive: omit it and the globe renders exactly as before. */
+  hazardData?: HazardMarker[];
   layers: {
     earthquakes: boolean;
     weather: boolean;
@@ -62,6 +77,7 @@ interface GlobeViewProps {
   onEarthquakeClick: (eq: EqItem) => void;
   onFireClick: (f: FireItem) => void;
   onDeforestationClick: (d: DeforestationItem) => void;
+  onHazardClick?: (id: string) => void;
   onCenterChange: (lat: number, lng: number) => void;
   onZoomChange: (distance: number) => void;
   cityData: Array<{ name: string; lat: number; lng: number }>;
@@ -764,6 +780,66 @@ function DeforestationPatch({
   );
 }
 
+// ─── Generic hazard blip (volcano, storm, flood, landslide, …) ────────────────
+// Reuses the earthquake marker vocabulary (glowing sphere + halo ring) but
+// takes an explicit colour + size so any hazard kind can be plotted uniformly.
+
+function HazardBlip({
+  marker,
+  position,
+  onClick,
+}: {
+  marker: HazardMarker;
+  position: [number, number, number];
+  onClick: () => void;
+}) {
+  const [x, y, z] = position;
+  const ringQuat = useMemo(() => {
+    const norm = new THREE.Vector3(x, y, z).normalize();
+    return new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0),
+      norm,
+    );
+  }, [x, y, z]);
+
+  return (
+    <group>
+      <mesh position={position} renderOrder={55}>
+        <sphereGeometry args={[marker.size, 10, 10]} />
+        <meshBasicMaterial
+          color={marker.color}
+          transparent
+          opacity={0.6}
+          depthTest={false}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh position={position} quaternion={ringQuat} renderOrder={55}>
+        <torusGeometry args={[marker.size * 2.1, marker.size * 0.28, 8, 24]} />
+        <meshBasicMaterial
+          color={marker.color}
+          transparent
+          opacity={0.3}
+          depthTest={false}
+          depthWrite={false}
+        />
+      </mesh>
+      {/* Invisible hit target */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: Three.js mesh */}
+      <mesh
+        position={position}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          onClick();
+        }}
+      >
+        <sphereGeometry args={[Math.max(0.016, marker.size * 1.5), 6, 6]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+    </group>
+  );
+}
+
 // ─── Earth component ───────────────────────────────────────────────────────────
 
 interface EarthProps extends Omit<GlobeViewProps, "globeCenter"> {
@@ -776,10 +852,12 @@ function Earth({
   weatherData,
   fireData,
   deforestationData,
+  hazardData,
   layers,
   onEarthquakeClick,
   onFireClick,
   onDeforestationClick,
+  onHazardClick,
   onCenterChange,
   onZoomChange,
   cityData,
@@ -970,6 +1048,21 @@ function Earth({
               />
             );
           })}
+
+      {/* ── MULTI-HAZARD BLIPS (volcano, storm, flood, landslide, …) ── */}
+      {(hazardData ?? [])
+        .filter((h) => isVisible(h.lat, h.lng))
+        .map((h) => {
+          const [x, y, z] = latLngToVec3(h.lat, h.lng, 1.0035);
+          return (
+            <HazardBlip
+              key={`hz-${h.id}`}
+              marker={h}
+              position={[x, y, z]}
+              onClick={() => onHazardClick?.(h.id)}
+            />
+          );
+        })}
 
       {/* ── WEATHER ── */}
       {layers.weather &&
