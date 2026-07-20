@@ -49,33 +49,40 @@ function quakeSeverity(mag: number): Severity {
   return 1;
 }
 
+// Pure parser: USGS GeoJSON → HazardEvent[]. Separated from the fetch so it can
+// be unit-tested against fixtures without network.
+export function parseUsgs(data: unknown): HazardEvent[] {
+  if (!data || typeof data !== "object") return [];
+  const d = data as UsgsResponse;
+  const out: HazardEvent[] = [];
+  for (const f of d.features ?? []) {
+    const coords = f.geometry?.coordinates;
+    const mag = f.properties?.mag;
+    if (!coords || coords.length < 2 || typeof mag !== "number") continue;
+    const [lng, lat] = coords;
+    if (typeof lat !== "number" || typeof lng !== "number") continue;
+    out.push({
+      id: `usgs:${f.id ?? `${lat},${lng},${f.properties?.time ?? 0}`}`,
+      kind: "earthquake",
+      lat,
+      lng,
+      title: f.properties?.place ?? `M${mag.toFixed(1)} earthquake`,
+      severity: quakeSeverity(mag),
+      magnitude: mag,
+      magnitudeUnit: "Mw",
+      source: "USGS",
+      observedAt: f.properties?.time ?? Date.now(),
+      url: f.properties?.url ?? undefined,
+    });
+  }
+  return out;
+}
+
 export async function fetchEarthquakes(): Promise<HazardEvent[]> {
   try {
     const res = await fetch(USGS_ALL_DAY);
     if (!res.ok) return [];
-    const data = (await res.json()) as UsgsResponse;
-    const out: HazardEvent[] = [];
-    for (const f of data.features ?? []) {
-      const coords = f.geometry?.coordinates;
-      const mag = f.properties?.mag;
-      if (!coords || coords.length < 2 || typeof mag !== "number") continue;
-      const [lng, lat] = coords;
-      if (typeof lat !== "number" || typeof lng !== "number") continue;
-      out.push({
-        id: `usgs:${f.id ?? `${lat},${lng},${f.properties?.time ?? 0}`}`,
-        kind: "earthquake",
-        lat,
-        lng,
-        title: f.properties?.place ?? `M${mag.toFixed(1)} earthquake`,
-        severity: quakeSeverity(mag),
-        magnitude: mag,
-        magnitudeUnit: "Mw",
-        source: "USGS",
-        observedAt: f.properties?.time ?? Date.now(),
-        url: f.properties?.url ?? undefined,
-      });
-    }
-    return out;
+    return parseUsgs(await res.json());
   } catch {
     return [];
   }
@@ -199,42 +206,49 @@ function eonetSeverity(
   return base;
 }
 
+// Pure parser: EONET events JSON → HazardEvent[]. Separated from the fetch for
+// unit testing.
+export function parseEonet(data: unknown): HazardEvent[] {
+  if (!data || typeof data !== "object") return [];
+  const d = data as EonetResponse;
+  const out: HazardEvent[] = [];
+  for (const ev of d.events ?? []) {
+    const categoryId = ev.categories?.[0]?.id;
+    if (!categoryId) continue;
+    const kind = eonetCategoryToKind(categoryId);
+    if (!kind) continue;
+    const geoms = ev.geometry ?? [];
+    if (geoms.length === 0) continue;
+    // Most recent geometry = current position of the event.
+    const geom = geoms[geoms.length - 1];
+    const point = eonetPoint(geom);
+    if (!point) continue;
+    const observedAt = geom.date ? Date.parse(geom.date) : Date.now();
+    out.push({
+      id: `eonet:${ev.id ?? `${point.lat},${point.lng}`}`,
+      kind,
+      lat: point.lat,
+      lng: point.lng,
+      title: ev.title ?? KIND_META[kind].label,
+      severity: eonetSeverity(kind, geom.magnitudeValue, geom.magnitudeUnit),
+      magnitude:
+        typeof geom.magnitudeValue === "number"
+          ? geom.magnitudeValue
+          : undefined,
+      magnitudeUnit: geom.magnitudeUnit ?? undefined,
+      source: "EONET",
+      observedAt: Number.isNaN(observedAt) ? Date.now() : observedAt,
+      url: ev.sources?.[0]?.url ?? ev.link,
+    });
+  }
+  return out;
+}
+
 export async function fetchEonetHazards(): Promise<HazardEvent[]> {
   try {
     const res = await fetch(EONET_EVENTS);
     if (!res.ok) return [];
-    const data = (await res.json()) as EonetResponse;
-    const out: HazardEvent[] = [];
-    for (const ev of data.events ?? []) {
-      const categoryId = ev.categories?.[0]?.id;
-      if (!categoryId) continue;
-      const kind = eonetCategoryToKind(categoryId);
-      if (!kind) continue;
-      const geoms = ev.geometry ?? [];
-      if (geoms.length === 0) continue;
-      // Most recent geometry = current position of the event.
-      const geom = geoms[geoms.length - 1];
-      const point = eonetPoint(geom);
-      if (!point) continue;
-      const observedAt = geom.date ? Date.parse(geom.date) : Date.now();
-      out.push({
-        id: `eonet:${ev.id ?? `${point.lat},${point.lng}`}`,
-        kind,
-        lat: point.lat,
-        lng: point.lng,
-        title: ev.title ?? KIND_META[kind].label,
-        severity: eonetSeverity(kind, geom.magnitudeValue, geom.magnitudeUnit),
-        magnitude:
-          typeof geom.magnitudeValue === "number"
-            ? geom.magnitudeValue
-            : undefined,
-        magnitudeUnit: geom.magnitudeUnit ?? undefined,
-        source: "EONET",
-        observedAt: Number.isNaN(observedAt) ? Date.now() : observedAt,
-        url: ev.sources?.[0]?.url ?? ev.link,
-      });
-    }
-    return out;
+    return parseEonet(await res.json());
   } catch {
     return [];
   }
