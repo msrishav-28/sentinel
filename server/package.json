@@ -1,0 +1,11 @@
+{
+  "name": "sentinel-gee-proxy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Serverless Earth Engine tile proxy for Sentinel's raster overlay",
+  "main": "gee-tiles.mjs",
+  "dependencies": {
+    "@google/earthengine": "^1.5.0"
+  }
+}

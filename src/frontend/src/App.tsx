@@ -8,6 +8,11 @@ import GlobeView, {
 } from "./GlobeView";
 import { seedHazards } from "./hazards/demo";
 import {
+  GEE_LAYERS,
+  type GeeLayerId,
+  fetchGeeTileTemplate,
+} from "./hazards/gee";
+import {
   type Notice,
   type NoticeReason,
   diffHazards,
@@ -549,10 +554,10 @@ function DetailPanel({
 // ─── Main App ───────────────────────────────────────────────────────────────────
 export default function App() {
   const [activeStyle, setActiveStyleRaw] = useState<StyleMode>(() =>
-    getStorage<StyleMode>("cerebro_style", "Normal"),
+    getStorage<StyleMode>("sentinel_style", "Normal"),
   );
   const [hudVisible, setHudVisible] = useState(() =>
-    getStorage("cerebro_hud", true),
+    getStorage("sentinel_hud", true),
   );
   const [kindVisible, setKindVisible] = useState<KindVisibility>(() =>
     getStorage("sentinel_kinds", defaultKindVisibility()),
@@ -560,10 +565,17 @@ export default function App() {
   const [weatherOn, setWeatherOn] = useState(() =>
     getStorage("sentinel_weather", false),
   );
+
+  // Optional Google Earth Engine raster overlay (see /server). Absent unless a
+  // proxy is configured — the control self-hides when unavailable.
+  const [geeLayer, setGeeLayer] = useState<GeeLayerId>("temperature");
+  const [geeTemplate, setGeeTemplate] = useState<string | null>(null);
+  const [geeOn, setGeeOn] = useState(false);
+  const [geeOpacity, setGeeOpacity] = useState(60);
   const [bloom, setBloom] = useState({ active: true, value: 50 });
   const [sharpen, setSharpen] = useState({ active: true, value: 56 });
   const [activeCity, setActiveCity] = useState(() =>
-    getStorage("cerebro_city", "Washington DC"),
+    getStorage("sentinel_city", "Washington DC"),
   );
   // targetCenter drives GlobeView camera fly-to
   const [targetCenter, setTargetCenter] = useState<{
@@ -609,7 +621,7 @@ export default function App() {
   // ── Ambient motion + proactive surfacing ──
   // userPiloting is true while the operator is actively interacting with the
   // globe; autoRotate pauses during piloting and resumes after 45s of
-  // inactivity, at which point CEREBRO auto-flies to the most severe recent
+  // inactivity, at which point SENTINEL auto-flies to the most severe recent
   // noticed event and surfaces a quiet on-screen cue.
   const [userPiloting, setUserPiloting] = useState(false);
   const [proactiveCue, setProactiveCue] = useState<string | null>(null);
@@ -620,12 +632,12 @@ export default function App() {
 
   // Sidebar collapse state
   const [leftCollapsed, setLeftCollapsed] = useState(() => {
-    const saved = localStorage.getItem("cerebro_left_collapsed");
+    const saved = localStorage.getItem("sentinel_left_collapsed");
     if (saved !== null) return JSON.parse(saved) as boolean;
     return window.innerWidth < 768;
   });
   const [rightCollapsed, setRightCollapsed] = useState(() => {
-    const saved = localStorage.getItem("cerebro_right_collapsed");
+    const saved = localStorage.getItem("sentinel_right_collapsed");
     if (saved !== null) return JSON.parse(saved) as boolean;
     return window.innerWidth < 768;
   });
@@ -695,8 +707,19 @@ export default function App() {
     };
   }, [refreshHazards]);
 
+  // ── Resolve the GEE overlay tile template (null unless a proxy is set up) ──
+  useEffect(() => {
+    let cancelled = false;
+    fetchGeeTileTemplate(geeLayer).then((t) => {
+      if (!cancelled) setGeeTemplate(t);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [geeLayer]);
+
   // ── Proactive surfacing + ambient motion control ──
-  // After 45s of inactivity on the globe, CEREBRO auto-flies to the most
+  // After 45s of inactivity on the globe, SENTINEL auto-flies to the most
   // severe recent noticed event and shows a subtle cue. Any piloting
   // interaction resets the timer and pauses autoRotate until the next idle.
   useEffect(() => {
@@ -770,7 +793,7 @@ export default function App() {
 
   const setActiveStyle = useCallback((s: StyleMode) => {
     setActiveStyleRaw(s);
-    setStorage("cerebro_style", s);
+    setStorage("sentinel_style", s);
   }, []);
 
   // ── Landscape auto-collapse ──
@@ -908,7 +931,7 @@ export default function App() {
         onClick={() => {
           const next = !leftCollapsed;
           setLeftCollapsed(next);
-          localStorage.setItem("cerebro_left_collapsed", JSON.stringify(next));
+          localStorage.setItem("sentinel_left_collapsed", JSON.stringify(next));
         }}
         style={{
           position: "absolute",
@@ -941,7 +964,10 @@ export default function App() {
         onClick={() => {
           const next = !rightCollapsed;
           setRightCollapsed(next);
-          localStorage.setItem("cerebro_right_collapsed", JSON.stringify(next));
+          localStorage.setItem(
+            "sentinel_right_collapsed",
+            JSON.stringify(next),
+          );
         }}
         style={{
           position: "absolute",
@@ -1320,6 +1346,8 @@ export default function App() {
             hazardData={otherHazards
               .filter((h) => kindVisible[h.kind])
               .map(toHazardMarker)}
+            geeTileUrlTemplate={geeOn && geeTemplate ? geeTemplate : undefined}
+            geeOpacity={geeOpacity / 100}
             layers={{
               earthquakes: kindVisible.earthquake,
               weather: weatherOn,
@@ -1369,7 +1397,7 @@ export default function App() {
             }))}
             onCityClick={(name, lat, lng) => {
               setActiveCity(name);
-              setStorage("cerebro_city", name);
+              setStorage("sentinel_city", name);
               setTargetCenter({ lat, lng });
               addFeed("SYSTEM", `Navigating to ${name}`);
             }}
@@ -1675,7 +1703,7 @@ export default function App() {
       {/* ── end center section ── */}
 
       {/* ── Proactive surfacing cue ──
-          Subtle fade in/out overlay shown when CEREBRO auto-flies to a
+          Subtle fade in/out overlay shown when SENTINEL auto-flies to a
           noticed event after operator inactivity. Rendered outside the
           circular globe clip so it stays legible across the full width. */}
       <div
@@ -1945,7 +1973,7 @@ export default function App() {
               onChange={(e) =>
                 setBloom((b) => ({ ...b, value: +e.target.value }))
               }
-              className="cerebro-slider"
+              className="sentinel-slider"
               style={{ width: "100%" }}
             />
           </div>
@@ -1986,7 +2014,7 @@ export default function App() {
               onChange={(e) =>
                 setSharpen((s) => ({ ...s, value: +e.target.value }))
               }
-              className="cerebro-slider"
+              className="sentinel-slider"
               style={{ width: "100%" }}
             />
           </div>
@@ -1998,7 +2026,7 @@ export default function App() {
               data-ocid="controls.hud.toggle"
               onClick={() => {
                 setHudVisible((v) => !v);
-                setStorage("cerebro_hud", !hudVisible);
+                setStorage("sentinel_hud", !hudVisible);
               }}
               style={btnStyle(hudVisible)}
             >
@@ -2017,6 +2045,75 @@ export default function App() {
               CITY LABELS {showCityLabels ? "ON" : "OFF"}
             </button>
           </div>
+
+          {/* EARTH ENGINE OVERLAY (only when a proxy is configured) */}
+          {geeTemplate && (
+            <div style={{ marginBottom: 12 }}>
+              <div
+                style={{
+                  color: "rgba(0,255,255,0.5)",
+                  fontSize: 7,
+                  marginBottom: 4,
+                  letterSpacing: "0.1em",
+                }}
+              >
+                EARTH ENGINE OVERLAY
+              </div>
+              <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+                <button
+                  type="button"
+                  data-ocid="controls.gee.toggle"
+                  onClick={() => setGeeOn((v) => !v)}
+                  style={btnStyle(geeOn)}
+                >
+                  {geeOn ? "ON" : "OFF"}
+                </button>
+                <span
+                  style={{
+                    color: "rgba(0,255,255,0.5)",
+                    fontSize: 8,
+                    marginLeft: "auto",
+                    alignSelf: "center",
+                  }}
+                >
+                  {geeOpacity}%
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 1fr",
+                  gap: 3,
+                  marginBottom: 4,
+                }}
+              >
+                {GEE_LAYERS.map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    data-ocid={`controls.gee.${l.id}`}
+                    onClick={() => setGeeLayer(l.id)}
+                    style={{
+                      ...btnStyle(geeLayer === l.id),
+                      fontSize: 7,
+                      padding: "3px 2px",
+                    }}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="range"
+                min={10}
+                max={100}
+                value={geeOpacity}
+                onChange={(e) => setGeeOpacity(+e.target.value)}
+                className="sentinel-slider"
+                style={{ width: "100%" }}
+              />
+            </div>
+          )}
 
           {/* VISUAL MODE */}
           <div style={{ marginBottom: 12 }}>
@@ -2090,7 +2187,7 @@ export default function App() {
                     .toLowerCase()}.button`}
                   onClick={() => {
                     setActiveCity(name);
-                    setStorage("cerebro_city", name);
+                    setStorage("sentinel_city", name);
                     // Fly camera to this city
                     setTargetCenter({ lat: coords.lat, lng: coords.lng });
                     addFeed("SYSTEM", `Navigating to ${name}`);

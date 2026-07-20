@@ -66,6 +66,10 @@ interface GlobeViewProps {
   /** Generic multi-hazard blips (volcano, storm, flood, …). Optional and
    *  additive: omit it and the globe renders exactly as before. */
   hazardData?: HazardMarker[];
+  /** Optional Google Earth Engine XYZ tile template for a raster overlay. */
+  geeTileUrlTemplate?: string;
+  /** Overlay opacity 0..1 (default 0.6). */
+  geeOpacity?: number;
   layers: {
     earthquakes: boolean;
     weather: boolean;
@@ -450,6 +454,85 @@ function TiledGlobe() {
       <group ref={groupRef} />
     </>
   );
+}
+
+// ─── GEE raster overlay (optional) ────────────────────────────────────────────
+// Renders a Google Earth Engine XYZ tile template as a semi-transparent global
+// overlay at a fixed low zoom (z=3, 64 tiles). Only mounts when a template is
+// supplied, so it's a no-op when GEE isn't configured. depthTest keeps the far
+// hemisphere correctly occluded by the base globe.
+
+function RasterOverlay({
+  template,
+  opacity,
+}: {
+  template: string;
+  opacity: number;
+}) {
+  const groupRef = useRef<THREE.Group>(null!);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: opacity updated in a separate effect
+  useEffect(() => {
+    const group = groupRef.current;
+    if (!group) return;
+    const loader = new THREE.TextureLoader();
+    const z = 3;
+    const n = 2 ** z;
+    const meshes: THREE.Mesh[] = [];
+    for (let ty = 0; ty < n; ty++) {
+      for (let tx = 0; tx < n; tx++) {
+        const url = template
+          .replace("{z}", String(z))
+          .replace("{x}", String(tx))
+          .replace("{y}", String(ty));
+        loader.load(
+          url,
+          (tex) => {
+            tex.colorSpace = THREE.SRGBColorSpace;
+            const geom = createTilePatchGeometry(
+              tile2lat(ty, z),
+              tile2lat(ty + 1, z),
+              tile2lon(tx, z),
+              tile2lon(tx + 1, z),
+            );
+            const mat = new THREE.MeshBasicMaterial({
+              map: tex,
+              transparent: true,
+              opacity,
+              depthTest: true,
+              depthWrite: false,
+            });
+            const mesh = new THREE.Mesh(geom, mat);
+            mesh.scale.setScalar(1.004); // float just above the base imagery
+            mesh.renderOrder = 30;
+            meshes.push(mesh);
+            group.add(mesh);
+          },
+          undefined,
+          () => {},
+        );
+      }
+    }
+    return () => {
+      for (const m of meshes) {
+        m.geometry.dispose();
+        (m.material as THREE.MeshBasicMaterial).map?.dispose();
+        (m.material as THREE.MeshBasicMaterial).dispose();
+        group.remove(m);
+      }
+    };
+  }, [template]);
+
+  useEffect(() => {
+    const group = groupRef.current;
+    if (!group) return;
+    for (const m of group.children) {
+      const mat = (m as THREE.Mesh).material as THREE.MeshBasicMaterial;
+      mat.opacity = opacity;
+    }
+  }, [opacity]);
+
+  return <group ref={groupRef} />;
 }
 
 // ─── Three.js sprite labels (no HTML canvas overlay) ──────────────────────────
@@ -1046,6 +1129,8 @@ function Earth({
   fireData,
   deforestationData,
   hazardData,
+  geeTileUrlTemplate,
+  geeOpacity,
   layers,
   onEarthquakeClick,
   onFireClick,
@@ -1120,6 +1205,14 @@ function Earth({
   return (
     <>
       <TiledGlobe />
+
+      {/* Optional GEE raster overlay */}
+      {geeTileUrlTemplate && (
+        <RasterOverlay
+          template={geeTileUrlTemplate}
+          opacity={geeOpacity ?? 0.6}
+        />
+      )}
 
       {/* Atmosphere */}
       <mesh renderOrder={20}>
