@@ -1,54 +1,61 @@
-import { useActor } from "@caffeineai/core-infrastructure";
 import { useCallback, useEffect, useRef, useState } from "react";
 import GlobeView, {
   type DeforestationItem,
   type EqItem,
   type FireItem,
+  type HazardMarker,
   type WeatherPoint,
 } from "./GlobeView";
-import { createActor } from "./backend";
-import type {
-  CycleStatus,
-  DeforestationAlert,
-  FireDetection,
-  NoticedEvent,
-} from "./backend";
-import { NoticeReason, type Severity } from "./backend";
+import { climateIndicators, deriveExtremeTemp } from "./hazards/climate";
+import { seedHazards } from "./hazards/demo";
+import {
+  GEE_LAYERS,
+  type GeeLayerId,
+  fetchGeeTileTemplate,
+} from "./hazards/gee";
+import {
+  type Notice,
+  type NoticeReason,
+  diffHazards,
+  mergeFeed,
+  rankNotices,
+} from "./hazards/noticing";
+import { fetchAllHazards } from "./hazards/sources";
+import {
+  HAZARD_KINDS,
+  type HazardEvent,
+  type HazardKind,
+  KIND_META,
+  severityLabel,
+} from "./hazards/types";
+
+// Demo/offline mode: open with `?demo` to render a seeded, globe-wide set of
+// hazards without any network — bulletproof for a venue with flaky wifi.
+const DEMO_MODE =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).has("demo");
 
 // ─── Types ───────────────────────────────────────────────────────────────
 type StyleMode = "Normal" | "CRT" | "NVG" | "FLIR" | "Anime" | "Noir" | "Snow";
 
-// Threat layers are grouped separately from observational layers so additional
-// threat layers (e.g. flood, drought) can be appended without touching the
-// existing observational toggles.
-interface LayerToggles {
-  earthquakes: boolean;
-  weather: boolean;
-  fires: boolean;
-  deforestation: boolean;
+// Per-kind visibility for the hazard layers. New hazard kinds join simply by
+// appearing in HAZARD_KINDS — no structural change here.
+type KindVisibility = Record<HazardKind, boolean>;
+
+function defaultKindVisibility(): KindVisibility {
+  const v = {} as KindVisibility;
+  for (const k of HAZARD_KINDS) v[k] = true;
+  return v;
 }
 
 interface FeedEvent {
   id: string;
   time: string;
-  type: "EQ" | "WEATHER" | "TRAFFIC" | "SYSTEM" | "FIRE" | "DEFORESTATION";
+  type: "EQ" | "WEATHER" | "SYSTEM" | "FIRE" | "HAZARD";
   message: string;
 }
 
-// ─── City Data ───────────────────────────────────────────────────────────────
-const CITIES: Record<string, { lat: number; lng: number }> = {
-  "Washington DC": { lat: 38.9, lng: -77.0 },
-  Austin: { lat: 30.2672, lng: -97.7431 },
-  "San Francisco": { lat: 37.7749, lng: -122.4194 },
-  "New York": { lat: 40.7128, lng: -74.006 },
-  Tokyo: { lat: 35.6762, lng: 139.6503 },
-  London: { lat: 51.5074, lng: -0.1278 },
-  Paris: { lat: 48.8566, lng: 2.3522 },
-  Dubai: { lat: 25.2048, lng: 55.2708 },
-  Sydney: { lat: -33.8688, lng: 151.2093 },
-  "S\u00e3o Paulo": { lat: -23.5505, lng: -46.6333 },
-};
-
+// ─── Weather cities (for the optional weather overlay + extreme-temp hazards) ──
 const WEATHER_CITIES = [
   // North America
   { city: "New York", lat: 40.71, lon: -74.01 },
@@ -348,16 +355,6 @@ function toDMS(deg: number, isLat: boolean): string {
   return `${String(d).padStart(isLat ? 2 : 3, "0")}°${String(m).padStart(2, "0")}'${String(s).padStart(5, "0")}"${dir}`;
 }
 
-function getGSD(dist: number): string {
-  const gsd = dist * 1000;
-  return gsd < 10 ? gsd.toFixed(1) : Math.round(gsd).toString();
-}
-
-function getNIIRS(dist: number): string {
-  const niirs = Math.min(9, Math.max(0, (4.0 - dist) * 4));
-  return niirs.toFixed(1);
-}
-
 function getMGRS(lat: number, lng: number): string {
   const zone = Math.floor((lng + 180) / 6) + 1;
   const band = "CDEFGHJKLMNPQRSTUVWX"[Math.min(19, Math.floor((lat + 80) / 8))];
@@ -415,52 +412,43 @@ function btnStyle(active: boolean): React.CSSProperties {
   };
 }
 
-// ─── Threat data converters ───────────────────────────────────────────────────
-// Backend FireDetection / DeforestationAlert carry bigint ns timestamps and
-// bigint confidence. GlobeView expects ISO strings and number confidence, so we
-// map through these converters before passing data to the globe.
-function toFireItem(f: FireDetection): FireItem {
+// ─── Hazard → globe mappers ───────────────────────────────────────────────────
+// Earthquakes reuse the existing EqItem channel (pulsing rings) and wildfires
+// reuse the FireItem channel (embers), preserving the globe's bespoke visuals.
+// Every other hazard kind renders as a generic colour/size-coded blip.
+
+function toEqItem(h: HazardEvent): EqItem {
+  return { lat: h.lat, lng: h.lng, mag: h.magnitude ?? 0, place: h.title };
+}
+
+function toFireItem(h: HazardEvent): FireItem {
   return {
-    id: f.id,
-    lat: f.lat,
-    lng: f.lng,
-    brightness: f.brightness,
-    confidence: Number(f.confidence),
-    acqDate: new Date(Number(f.acqDate / 1_000_000n)).toISOString(),
-    source: f.source,
+    id: h.id,
+    lat: h.lat,
+    lng: h.lng,
+    brightness: 300 + h.severity * 15,
+    confidence: h.severity / 5,
+    acqDate: new Date(h.observedAt).toISOString(),
+    source: h.source,
   };
 }
 
-function toDeforestationItem(d: DeforestationAlert): DeforestationItem {
+function toHazardMarker(h: HazardEvent): HazardMarker {
   return {
-    id: d.id,
-    lat: d.lat,
-    lng: d.lng,
-    confidence: Number(d.confidence),
-    alertDate: new Date(Number(d.alertDate / 1_000_000n)).toISOString(),
-    areaHectares: d.areaHectares,
-    source: d.source,
+    id: h.id,
+    lat: h.lat,
+    lng: h.lng,
+    color: KIND_META[h.kind].color,
+    size: 0.004 + (h.severity - 1) * 0.0018,
+    kind: h.kind,
   };
 }
 
-// Severity ranking for proactive surfacing — higher = more urgent.
-const SEVERITY_RANK: Record<Severity, number> = {
-  low: 1,
-  moderate: 2,
-  high: 3,
-  severe: 4,
-  critical: 5,
-};
-
-// Reason-based marker for the noticing feed — distinguishes how a notice evolved.
-const REASON_MARKER: Record<
-  NoticeReason,
-  { glyph: string; intensity: number }
-> = {
-  [NoticeReason.newEvent]: { glyph: "✦", intensity: 0.7 },
-  [NoticeReason.worsening]: { glyph: "▲", intensity: 0.85 },
-  [NoticeReason.escalating]: { glyph: "⤴", intensity: 1.0 },
-  [NoticeReason.lingering]: { glyph: "≈", intensity: 0.5 },
+// Reason → feed glyph, distinguishing how a notice evolved.
+const REASON_MARKER: Record<NoticeReason, { glyph: string }> = {
+  new: { glyph: "✦" },
+  escalating: { glyph: "⤴" },
+  worsening: { glyph: "▲" },
 };
 
 // ─── HUD Detail Panel ────────────────────────────────────────────────────────────
@@ -544,24 +532,26 @@ function DetailPanel({
 // ─── Main App ───────────────────────────────────────────────────────────────────
 export default function App() {
   const [activeStyle, setActiveStyleRaw] = useState<StyleMode>(() =>
-    getStorage<StyleMode>("cerebro_style", "Normal"),
+    getStorage<StyleMode>("sentinel_style", "Normal"),
   );
   const [hudVisible, setHudVisible] = useState(() =>
-    getStorage("cerebro_hud", true),
+    getStorage("sentinel_hud", true),
   );
-  const [layers, setLayers] = useState<LayerToggles>(() =>
-    getStorage("cerebro_layers", {
-      earthquakes: true,
-      weather: false,
-      fires: true,
-      deforestation: true,
-    }),
+  const [kindVisible, setKindVisible] = useState<KindVisibility>(() =>
+    getStorage("sentinel_kinds", defaultKindVisibility()),
   );
+  const [weatherOn, setWeatherOn] = useState(() =>
+    getStorage("sentinel_weather", false),
+  );
+
+  // Optional Google Earth Engine raster overlay (see docs/gee.md). Absent unless a
+  // proxy is configured — the control self-hides when unavailable.
+  const [geeLayer, setGeeLayer] = useState<GeeLayerId>("temperature");
+  const [geeTemplate, setGeeTemplate] = useState<string | null>(null);
+  const [geeOn, setGeeOn] = useState(false);
+  const [geeOpacity, setGeeOpacity] = useState(60);
   const [bloom, setBloom] = useState({ active: true, value: 50 });
   const [sharpen, setSharpen] = useState({ active: true, value: 56 });
-  const [activeCity, setActiveCity] = useState(() =>
-    getStorage("cerebro_city", "Washington DC"),
-  );
   // targetCenter drives GlobeView camera fly-to
   const [targetCenter, setTargetCenter] = useState<{
     lat: number;
@@ -570,27 +560,46 @@ export default function App() {
 
   const [mapCenter, setMapCenter] = useState({ lat: 38.9, lng: -77.0 });
   const [globeZoomDist, setGlobeZoomDist] = useState(2.5);
-  const [showCityLabels, setShowCityLabels] = useState(true);
   const [utcTime, setUtcTime] = useState("");
-  const [eqCount, setEqCount] = useState(0);
   const [feedExpanded, setFeedExpanded] = useState(true);
-  const [lastEqUpdate, setLastEqUpdate] = useState("never");
   const [lastWeatherUpdate, setLastWeatherUpdate] = useState("never");
 
-  // Globe data
-  const [globeEqs, setGlobeEqs] = useState<EqItem[]>([]);
+  // Weather overlay data (browser-fetched context layer). A ref mirrors it so
+  // the hazard pipeline can derive extreme heat/cold without re-subscribing.
   const [weatherData, setWeatherData] = useState<WeatherPoint[]>([]);
+  const weatherRef = useRef<WeatherPoint[]>([]);
+
+  // ── Unified hazard data (browser is the sensor) ──
+  const [hazards, setHazards] = useState<HazardEvent[]>([]);
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const [sourceOk, setSourceOk] = useState<Record<string, boolean>>({});
+  const [lastHazardUpdate, setLastHazardUpdate] = useState("never");
+  // Carries the previous world between polls so the engine can diff.
+  const hazardIndexRef = useRef<Map<string, HazardEvent>>(new Map());
+
+  // Derived per-kind slices for the globe channels.
+  const earthquakes = hazards.filter((h) => h.kind === "earthquake");
+  const wildfires = hazards.filter((h) => h.kind === "wildfire");
+  const otherHazards = hazards.filter(
+    (h) => h.kind !== "earthquake" && h.kind !== "wildfire",
+  );
+  const eqCount = earthquakes.length;
+  const criticalCount = hazards.filter((h) => h.severity >= 5).length;
+  const severeCount = hazards.filter((h) => h.severity === 4).length;
 
   // Selected items (detail panels rendered OUTSIDE the circular clip)
   const [selectedEq, setSelectedEq] = useState<EqItem | null>(null);
   const [selectedFire, setSelectedFire] = useState<FireItem | null>(null);
   const [selectedDeforestation, setSelectedDeforestation] =
     useState<DeforestationItem | null>(null);
+  const [selectedHazard, setSelectedHazard] = useState<HazardEvent | null>(
+    null,
+  );
 
   // ── Ambient motion + proactive surfacing ──
   // userPiloting is true while the operator is actively interacting with the
   // globe; autoRotate pauses during piloting and resumes after 45s of
-  // inactivity, at which point CEREBRO auto-flies to the most severe recent
+  // inactivity, at which point SENTINEL auto-flies to the most severe recent
   // noticed event and surfaces a quiet on-screen cue.
   const [userPiloting, setUserPiloting] = useState(false);
   const [proactiveCue, setProactiveCue] = useState<string | null>(null);
@@ -601,12 +610,12 @@ export default function App() {
 
   // Sidebar collapse state
   const [leftCollapsed, setLeftCollapsed] = useState(() => {
-    const saved = localStorage.getItem("cerebro_left_collapsed");
+    const saved = localStorage.getItem("sentinel_left_collapsed");
     if (saved !== null) return JSON.parse(saved) as boolean;
     return window.innerWidth < 768;
   });
   const [rightCollapsed, setRightCollapsed] = useState(() => {
-    const saved = localStorage.getItem("cerebro_right_collapsed");
+    const saved = localStorage.getItem("sentinel_right_collapsed");
     if (saved !== null) return JSON.parse(saved) as boolean;
     return window.innerWidth < 768;
   });
@@ -623,75 +632,82 @@ export default function App() {
     ]);
   }, []);
 
-  // ── Environmental threat data (sourced from backend canister) ──
-  // The canister runs its own noticing cycle on a timer; the frontend polls
-  // the read methods on a 60s interval to surface fresh fire / deforestation
-  // detections and the proactive noticed feed.
-  const { actor } = useActor(createActor);
-  const [fires, setFires] = useState<FireDetection[]>([]);
-  const [deforestation, setDeforestation] = useState<DeforestationAlert[]>([]);
-  const [noticedFeed, setNoticedFeed] = useState<NoticedEvent[]>([]);
-  const [_cycleStatus, setCycleStatus] = useState<CycleStatus | null>(null);
-  const [lastThreatUpdate, setLastThreatUpdate] = useState("never");
-  // Track which noticed event ids have already been surfaced to the live feed
-  // so we only announce genuinely new notices on each poll.
+  // ── Unified hazard pipeline ──
+  // Fetch every live source directly in the browser, normalize into
+  // HazardEvent[], and run the noticing engine locally. A dead source degrades
+  // gracefully (its adapter returns []) without taking down the globe.
   const surfacedNoticeIdsRef = useRef<Set<string>>(new Set());
 
-  const refreshThreatData = useCallback(async () => {
-    if (!actor) return;
-    try {
-      const [fireData, deforData, noticed, status] = await Promise.all([
-        actor.getFires(),
-        actor.getDeforestation(),
-        actor.getNoticedFeed(50n),
-        actor.getCycleStatus(),
-      ]);
-      setFires(fireData);
-      setDeforestation(deforData);
-      setNoticedFeed(noticed);
-      setCycleStatus(status);
-      setLastThreatUpdate(new Date().toLocaleTimeString());
-
-      // Surface only newly-arrived noticed events into the live feed.
-      for (const ev of noticed) {
-        if (!surfacedNoticeIdsRef.current.has(ev.id)) {
-          surfacedNoticeIdsRef.current.add(ev.id);
-          const feedType: FeedEvent["type"] =
-            ev.layer === "fire" ? "FIRE" : "DEFORESTATION";
-          const marker = REASON_MARKER[ev.reason];
-          addFeed(
-            feedType,
-            `${marker.glyph} Since you last looked — ${ev.summary}`,
-          );
-        }
+  const refreshHazards = useCallback(async () => {
+    const now = Date.now();
+    let result: Awaited<ReturnType<typeof fetchAllHazards>>;
+    if (DEMO_MODE) {
+      result = { hazards: seedHazards(now), sourceOk: { DEMO: true } };
+    } else {
+      try {
+        result = await fetchAllHazards();
+      } catch {
+        setLastHazardUpdate("failed");
+        return;
       }
-
-      if (fireData.length > 0) {
-        addFeed("FIRE", `${fireData.length} active fire detections`);
-      }
-      if (deforData.length > 0) {
-        addFeed("DEFORESTATION", `${deforData.length} deforestation alerts`);
-      }
-    } catch {
-      setLastThreatUpdate("failed");
-      addFeed("SYSTEM", "Threat feed unavailable — canister unreachable");
+      // Climate hazards ride on top: extreme heat/cold derived from the live
+      // weather readings, plus curated global-warming / ozone indicators.
+      result = {
+        hazards: [
+          ...result.hazards,
+          ...deriveExtremeTemp(weatherRef.current, now),
+          ...climateIndicators(now),
+        ],
+        sourceOk: result.sourceOk,
+      };
     }
-  }, [actor, addFeed]);
+    const { notices: fresh, index } = diffHazards(
+      hazardIndexRef.current,
+      result.hazards,
+      now,
+    );
+    hazardIndexRef.current = index;
+    setHazards(result.hazards);
+    setSourceOk(result.sourceOk);
+    setNotices((prev) => mergeFeed(prev, fresh, 200));
+    setLastHazardUpdate(new Date().toLocaleTimeString());
 
-  // ── Poll the canister for environmental data every 60s ──
+    // Surface only genuinely-new notices into the live feed (dedup by id+reason
+    // so a "new" then later "escalating" for the same event each show once).
+    for (const n of fresh) {
+      const key = n.id + n.reason;
+      if (surfacedNoticeIdsRef.current.has(key)) continue;
+      surfacedNoticeIdsRef.current.add(key);
+      addFeed(
+        "HAZARD",
+        `${REASON_MARKER[n.reason].glyph} Since you last looked — ${KIND_META[n.kind].label}: ${n.title}`,
+      );
+    }
+  }, [addFeed]);
+
+  // ── Poll every 60s ──
   useEffect(() => {
-    if (!actor) return;
-    // Initial fetch shortly after actor becomes available
-    const t = setTimeout(refreshThreatData, 800);
-    const id = setInterval(refreshThreatData, 60_000);
+    const t = setTimeout(refreshHazards, 800);
+    const id = setInterval(refreshHazards, 60_000);
     return () => {
       clearTimeout(t);
       clearInterval(id);
     };
-  }, [actor, refreshThreatData]);
+  }, [refreshHazards]);
+
+  // ── Resolve the GEE overlay tile template (null unless a proxy is set up) ──
+  useEffect(() => {
+    let cancelled = false;
+    fetchGeeTileTemplate(geeLayer).then((t) => {
+      if (!cancelled) setGeeTemplate(t);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [geeLayer]);
 
   // ── Proactive surfacing + ambient motion control ──
-  // After 45s of inactivity on the globe, CEREBRO auto-flies to the most
+  // After 45s of inactivity on the globe, SENTINEL auto-flies to the most
   // severe recent noticed event and shows a subtle cue. Any piloting
   // interaction resets the timer and pauses autoRotate until the next idle.
   useEffect(() => {
@@ -700,18 +716,15 @@ export default function App() {
 
     const surfaceProactively = () => {
       setUserPiloting(false);
-      if (noticedFeed.length === 0) return;
+      if (notices.length === 0) return;
       // Pick the highest-severity, most-recent noticed event.
-      const ranked = [...noticedFeed].sort((a, b) => {
-        const rankDiff = SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity];
-        if (rankDiff !== 0) return rankDiff;
-        return Number(b.noticedAt - a.noticedAt);
-      });
-      const target = ranked[0];
+      const target = rankNotices(notices)[0];
       if (!target) return;
       setTargetCenter({ lat: target.lat, lng: target.lng });
       const marker = REASON_MARKER[target.reason];
-      setProactiveCue(`${marker.glyph} CEREBRO noticed — ${target.summary}`);
+      setProactiveCue(
+        `${marker.glyph} SENTINEL noticed — ${KIND_META[target.kind].label}: ${target.title}`,
+      );
       if (proactiveCueTimerRef.current) {
         clearTimeout(proactiveCueTimerRef.current);
       }
@@ -762,13 +775,13 @@ export default function App() {
         }
       }
     };
-    // noticedFeed is intentionally a dependency so the surfaced target stays
-    // current as new notices arrive from the canister.
-  }, [noticedFeed]);
+    // notices is intentionally a dependency so the surfaced target stays
+    // current as fresh events are noticed.
+  }, [notices]);
 
   const setActiveStyle = useCallback((s: StyleMode) => {
     setActiveStyleRaw(s);
-    setStorage("cerebro_style", s);
+    setStorage("sentinel_style", s);
   }, []);
 
   // ── Landscape auto-collapse ──
@@ -799,38 +812,6 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  // ── Fetch earthquakes ──
-  const fetchEarthquakes = useCallback(async () => {
-    try {
-      const r = await fetch(
-        "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson",
-      );
-      const data = (await r.json()) as {
-        features: Array<{
-          geometry: { coordinates: number[] };
-          properties: { mag: number; place: string; time: number };
-        }>;
-      };
-      const arr: EqItem[] = data.features.map((f) => ({
-        lat: f.geometry.coordinates[1],
-        lng: f.geometry.coordinates[0],
-        mag: f.properties.mag,
-        place: f.properties.place,
-      }));
-      setGlobeEqs(arr);
-      setEqCount(arr.length);
-      setLastEqUpdate(new Date().toLocaleTimeString());
-      const big = arr.filter((e) => e.mag >= 4);
-      if (big.length > 0) {
-        addFeed("EQ", `M${big[0].mag.toFixed(1)} near ${big[0].place}`);
-      } else {
-        addFeed("EQ", `${arr.length} seismic events in last 24h`);
-      }
-    } catch {
-      setLastEqUpdate("failed");
-    }
-  }, [addFeed]);
-
   // ── Fetch weather ──
   const fetchWeather = useCallback(async () => {
     try {
@@ -858,6 +839,7 @@ export default function App() {
         };
       });
       setWeatherData(points);
+      weatherRef.current = points;
       setLastWeatherUpdate(new Date().toLocaleTimeString());
       const sorted = [...points].sort((a, b) => a.temp - b.temp);
       addFeed(
@@ -871,38 +853,34 @@ export default function App() {
   }, [addFeed]);
 
   useEffect(() => {
-    addFeed("SYSTEM", "CEREBRO INTELLIGENCE PLATFORM ONLINE");
-    addFeed("SYSTEM", "Initializing all data feeds...");
+    addFeed("SYSTEM", "SENTINEL PLANETARY MONITOR ONLINE");
+    addFeed("SYSTEM", "Initializing hazard feeds…");
     const t = setTimeout(() => {
-      fetchEarthquakes();
       fetchWeather();
     }, 600);
-    const eqInterval = setInterval(fetchEarthquakes, 120_000);
     const weatherInterval = setInterval(fetchWeather, 300_000);
     return () => {
       clearTimeout(t);
-      clearInterval(eqInterval);
       clearInterval(weatherInterval);
     };
-  }, [fetchEarthquakes, fetchWeather, addFeed]);
+  }, [fetchWeather, addFeed]);
 
-  const toggleLayer = useCallback((name: keyof LayerToggles) => {
-    setLayers((prev) => {
-      const next = { ...prev, [name]: !prev[name] };
-      setStorage("cerebro_layers", next);
+  const toggleKind = useCallback((kind: HazardKind) => {
+    setKindVisible((prev) => {
+      const next = { ...prev, [kind]: !prev[kind] };
+      setStorage("sentinel_kinds", next);
       return next;
     });
   }, []);
 
   const mapStyle = STYLE_CONFIGS[activeStyle];
 
-  const feedTypeColor = {
+  const feedTypeColor: Record<FeedEvent["type"], string> = {
     EQ: "#ff4400",
     WEATHER: "#aaddff",
-    TRAFFIC: "#ffcc00",
     SYSTEM: "rgba(0,255,255,0.4)",
     FIRE: "#ff5a1f",
-    DEFORESTATION: "#b5651d",
+    HAZARD: "#ffaa33",
   };
 
   // Globe container: always a perfect circle using CSS min()
@@ -942,7 +920,7 @@ export default function App() {
         onClick={() => {
           const next = !leftCollapsed;
           setLeftCollapsed(next);
-          localStorage.setItem("cerebro_left_collapsed", JSON.stringify(next));
+          localStorage.setItem("sentinel_left_collapsed", JSON.stringify(next));
         }}
         style={{
           position: "absolute",
@@ -975,7 +953,10 @@ export default function App() {
         onClick={() => {
           const next = !rightCollapsed;
           setRightCollapsed(next);
-          localStorage.setItem("cerebro_right_collapsed", JSON.stringify(next));
+          localStorage.setItem(
+            "sentinel_right_collapsed",
+            JSON.stringify(next),
+          );
         }}
         style={{
           position: "absolute",
@@ -1020,7 +1001,7 @@ export default function App() {
           pointerEvents: leftCollapsed ? "none" : "auto",
         }}
       >
-        {/* CEREBRO title */}
+        {/* SENTINEL title */}
         <div
           style={{
             padding: "10px 12px 6px",
@@ -1035,7 +1016,7 @@ export default function App() {
               letterSpacing: "0.2em",
             }}
           >
-            CEREBRO
+            SENTINEL
           </div>
           <div
             style={{
@@ -1044,7 +1025,7 @@ export default function App() {
               letterSpacing: "0.15em",
             }}
           >
-            GLOBAL INTELLIGENCE PLATFORM
+            PLANETARY HAZARD MONITOR
           </div>
         </div>
 
@@ -1063,54 +1044,15 @@ export default function App() {
               marginBottom: 6,
             }}
           >
-            ▶ DATA LAYERS
+            ▶ HAZARD LAYERS
           </div>
-          {(
-            [
-              {
-                key: "earthquakes",
-                icon: "⊕",
-                label: "EARTHQUAKES 24H",
-                count: eqCount,
-                update: lastEqUpdate,
-                ocid: "layers.earthquakes.toggle",
-              },
-              {
-                key: "weather",
-                icon: "☁",
-                label: "WEATHER RADAR",
-                count: weatherData.length,
-                update: lastWeatherUpdate,
-                ocid: "layers.weather.toggle",
-              },
-              {
-                key: "fires",
-                icon: "🔥",
-                label: "ACTIVE FIRES",
-                count: fires.length,
-                update: lastThreatUpdate,
-                ocid: "layers.fires.toggle",
-              },
-              {
-                key: "deforestation",
-                icon: "⚠",
-                label: "DEFORESTATION",
-                count: deforestation.length,
-                update: lastThreatUpdate,
-                ocid: "layers.deforestation.toggle",
-              },
-            ] as Array<{
-              key: keyof LayerToggles;
-              icon: string;
-              label: string;
-              count: number;
-              update: string;
-              ocid: string;
-            }>
-          ).map((layer) => (
-            <div key={`wrapper-${layer.key}`} style={{ display: "contents" }}>
+          {HAZARD_KINDS.map((kind) => {
+            const meta = KIND_META[kind];
+            const count = hazards.filter((h) => h.kind === kind).length;
+            const on = kindVisible[kind];
+            return (
               <div
-                key={layer.key}
+                key={kind}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -1121,67 +1063,139 @@ export default function App() {
               >
                 <span
                   style={{
-                    color: layers[layer.key]
-                      ? "#00ffff"
-                      : "rgba(0,255,255,0.3)",
+                    color: on ? meta.color : "rgba(0,255,255,0.3)",
                     fontSize: 11,
                     width: 14,
                   }}
                 >
-                  {layer.icon}
+                  {meta.glyph}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div
                     style={{
-                      color: layers[layer.key]
-                        ? "#00ffff"
-                        : "rgba(0,255,255,0.3)",
+                      color: on ? "#00ffff" : "rgba(0,255,255,0.3)",
                       fontSize: 8,
                     }}
                   >
-                    {layer.label}
-                  </div>
-                  <div style={{ color: "rgba(0,255,255,0.3)", fontSize: 7 }}>
-                    UPD: {layer.update}
+                    {meta.label}
                   </div>
                 </div>
                 <span
                   style={{
-                    color: layers[layer.key]
-                      ? "#00ffff"
-                      : "rgba(0,255,255,0.25)",
+                    color: on ? meta.color : "rgba(0,255,255,0.25)",
                     fontSize: 8,
                     minWidth: 24,
                     textAlign: "right",
                   }}
                 >
-                  {layer.count > 0 ? layer.count : "–"}
+                  {count > 0 ? count : "–"}
                 </span>
                 <button
                   type="button"
-                  data-ocid={layer.ocid}
-                  onClick={() => toggleLayer(layer.key)}
+                  data-ocid={`layers.${kind}.toggle`}
+                  onClick={() => toggleKind(kind)}
                   style={{
                     padding: "2px 5px",
                     fontSize: 7,
                     cursor: "pointer",
                     fontFamily: "monospace",
-                    background: layers[layer.key]
-                      ? "rgba(0,255,255,0.2)"
-                      : "rgba(0,0,0,0.4)",
-                    border: `1px solid ${
-                      layers[layer.key] ? "#00ffff" : "rgba(0,255,255,0.2)"
-                    }`,
-                    color: layers[layer.key]
-                      ? "#00ffff"
-                      : "rgba(0,255,255,0.3)",
+                    background: on ? "rgba(0,255,255,0.2)" : "rgba(0,0,0,0.4)",
+                    border: `1px solid ${on ? "#00ffff" : "rgba(0,255,255,0.2)"}`,
+                    color: on ? "#00ffff" : "rgba(0,255,255,0.3)",
                   }}
                 >
-                  {layers[layer.key] ? "ON" : "OFF"}
+                  {on ? "ON" : "OFF"}
                 </button>
               </div>
+            );
+          })}
+
+          {/* Weather overlay (context, not a hazard) */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "3px 0",
+              borderTop: "1px solid rgba(0,255,255,0.08)",
+              marginTop: 4,
+            }}
+          >
+            <span
+              style={{
+                color: weatherOn ? "#aaddff" : "rgba(0,255,255,0.3)",
+                fontSize: 11,
+                width: 14,
+              }}
+            >
+              ☁
+            </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  color: weatherOn ? "#00ffff" : "rgba(0,255,255,0.3)",
+                  fontSize: 8,
+                }}
+              >
+                WEATHER
+              </div>
+              <div style={{ color: "rgba(0,255,255,0.3)", fontSize: 7 }}>
+                UPD: {lastWeatherUpdate}
+              </div>
             </div>
-          ))}
+            <span
+              style={{
+                color: weatherOn ? "#aaddff" : "rgba(0,255,255,0.25)",
+                fontSize: 8,
+                minWidth: 24,
+                textAlign: "right",
+              }}
+            >
+              {weatherData.length > 0 ? weatherData.length : "–"}
+            </span>
+            <button
+              type="button"
+              data-ocid="layers.weather.toggle"
+              onClick={() => {
+                const next = !weatherOn;
+                setWeatherOn(next);
+                setStorage("sentinel_weather", next);
+              }}
+              style={{
+                padding: "2px 5px",
+                fontSize: 7,
+                cursor: "pointer",
+                fontFamily: "monospace",
+                background: weatherOn
+                  ? "rgba(0,255,255,0.2)"
+                  : "rgba(0,0,0,0.4)",
+                border: `1px solid ${weatherOn ? "#00ffff" : "rgba(0,255,255,0.2)"}`,
+                color: weatherOn ? "#00ffff" : "rgba(0,255,255,0.3)",
+              }}
+            >
+              {weatherOn ? "ON" : "OFF"}
+            </button>
+          </div>
+
+          {/* Live source status */}
+          <div
+            style={{
+              marginTop: 6,
+              fontSize: 7,
+              color: "rgba(0,255,255,0.4)",
+              letterSpacing: "0.06em",
+            }}
+          >
+            {DEMO_MODE ? (
+              <span style={{ color: "#ffaa33" }}>◆ DEMO DATA</span>
+            ) : (
+              <>
+                SRC USGS {sourceOk.USGS ? "●" : "○"} · EONET{" "}
+                {sourceOk.EONET ? "●" : "○"}
+              </>
+            )}{" "}
+            · UPD {lastHazardUpdate}
+          </div>
         </div>
 
         {/* LIVE FEED */}
@@ -1279,17 +1293,11 @@ export default function App() {
             padding: "6px 12px",
             color: "rgba(0,255,255,0.2)",
             fontSize: 7,
+            lineHeight: 1.5,
           }}
         >
-          © {new Date().getFullYear()} · BUILT WITH{" "}
-          <a
-            href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
-            target="_blank"
-            rel="noreferrer"
-            style={{ color: "rgba(0,255,255,0.4)", textDecoration: "none" }}
-          >
-            CAFFEINE.AI
-          </a>
+          © {new Date().getFullYear()} SENTINEL · DATA: USGS · NASA EONET ·
+          OPEN-METEO
         </div>
       </div>
 
@@ -1320,50 +1328,56 @@ export default function App() {
           data-ocid="map.canvas_target"
         >
           <GlobeView
-            eqData={globeEqs}
+            eqData={kindVisible.earthquake ? earthquakes.map(toEqItem) : []}
             weatherData={weatherData}
-            fireData={fires.map(toFireItem)}
-            deforestationData={deforestation.map(toDeforestationItem)}
-            layers={layers}
+            fireData={kindVisible.wildfire ? wildfires.map(toFireItem) : []}
+            deforestationData={[]}
+            hazardData={otherHazards
+              .filter((h) => kindVisible[h.kind])
+              .map(toHazardMarker)}
+            geeTileUrlTemplate={geeOn && geeTemplate ? geeTemplate : undefined}
+            geeOpacity={geeOpacity / 100}
+            layers={{
+              earthquakes: kindVisible.earthquake,
+              weather: weatherOn,
+              fires: kindVisible.wildfire,
+              deforestation: false,
+            }}
             globeCenter={mapCenter}
             targetCenter={targetCenter}
             autoRotate={!userPiloting}
             onEarthquakeClick={(eq) => {
               setSelectedEq(eq);
+              setSelectedHazard(null);
               addFeed("EQ", `Selected: M${eq.mag.toFixed(1)} ${eq.place}`);
             }}
             onFireClick={(f) => {
               setSelectedFire(f);
               setSelectedDeforestation(null);
               setSelectedEq(null);
+              setSelectedHazard(null);
               addFeed(
                 "FIRE",
-                `Selected fire detection at ${f.lat.toFixed(2)}°, ${f.lng.toFixed(2)}°`,
+                `Selected wildfire at ${f.lat.toFixed(2)}°, ${f.lng.toFixed(2)}°`,
               );
             }}
             onDeforestationClick={(d) => {
               setSelectedDeforestation(d);
-              setSelectedFire(null);
+            }}
+            onHazardClick={(id) => {
+              const h = hazards.find((x) => x.id === id) ?? null;
+              setSelectedHazard(h);
               setSelectedEq(null);
-              addFeed(
-                "DEFORESTATION",
-                `Selected deforestation alert at ${d.lat.toFixed(2)}°, ${d.lng.toFixed(2)}°`,
-              );
+              setSelectedFire(null);
+              if (h) {
+                addFeed(
+                  "HAZARD",
+                  `Selected ${KIND_META[h.kind].label}: ${h.title}`,
+                );
+              }
             }}
             onCenterChange={(lat, lng) => setMapCenter({ lat, lng })}
             onZoomChange={setGlobeZoomDist}
-            showCityLabels={showCityLabels}
-            cityData={Object.entries(CITIES).map(([name, c]) => ({
-              name,
-              lat: c.lat,
-              lng: c.lng,
-            }))}
-            onCityClick={(name, lat, lng) => {
-              setActiveCity(name);
-              setStorage("cerebro_city", name);
-              setTargetCenter({ lat, lng });
-              addFeed("SYSTEM", `Navigating to ${name}`);
-            }}
           />
           {/* Vignette */}
           <div className="map-vignette" />
@@ -1612,11 +1626,61 @@ export default function App() {
             />
           </div>
         )}
+
+        {/* Generic hazard panel (volcano, storm, flood, landslide, …) */}
+        {selectedHazard && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: 24,
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 2000,
+              pointerEvents: "all",
+            }}
+            data-ocid="hazard.panel"
+          >
+            <DetailPanel
+              title={`${KIND_META[selectedHazard.kind].glyph} ${KIND_META[selectedHazard.kind].label}`}
+              accent={KIND_META[selectedHazard.kind].color}
+              rows={[
+                ["EVENT", selectedHazard.title.slice(0, 32)],
+                ["LAT", `${selectedHazard.lat.toFixed(4)}°`],
+                ["LNG", `${selectedHazard.lng.toFixed(4)}°`],
+                [
+                  "SEVERITY",
+                  `${selectedHazard.severity}/5 ${severityLabel(selectedHazard.severity)}`,
+                ],
+                ...(selectedHazard.magnitude !== undefined
+                  ? ([
+                      [
+                        "MAGNITUDE",
+                        `${selectedHazard.magnitude}${
+                          selectedHazard.magnitudeUnit
+                            ? ` ${selectedHazard.magnitudeUnit}`
+                            : ""
+                        }`,
+                      ],
+                    ] as Array<[string, string]>)
+                  : []),
+                [
+                  "OBSERVED",
+                  new Date(selectedHazard.observedAt)
+                    .toISOString()
+                    .replace("T", " ")
+                    .slice(0, 19),
+                ],
+                ["SOURCE", selectedHazard.source],
+              ]}
+              onClose={() => setSelectedHazard(null)}
+            />
+          </div>
+        )}
       </div>
       {/* ── end center section ── */}
 
       {/* ── Proactive surfacing cue ──
-          Subtle fade in/out overlay shown when CEREBRO auto-flies to a
+          Subtle fade in/out overlay shown when SENTINEL auto-flies to a
           noticed event after operator inactivity. Rendered outside the
           circular globe clip so it stays legible across the full width. */}
       <div
@@ -1659,7 +1723,7 @@ export default function App() {
       {/* ── HUD Overlays (main wrapper, tracks sidebar widths) ── */}
       {hudVisible && (
         <>
-          {/* PANOPTIC stats bar */}
+          {/* Hazard status bar */}
           <div
             style={{
               position: "absolute",
@@ -1677,9 +1741,9 @@ export default function App() {
               transition: "left 0.3s ease, right 0.3s ease",
             }}
           >
-            PANOPTIC VIS:{eqCount} SRC:{layers.earthquakes ? 1 : 0}
-            {layers.weather ? 1 : 0} GLOBE-DIST:
-            {globeZoomDist.toFixed(2)} 🔥{fires.length} ⚠{deforestation.length}
+            SENTINEL HAZARDS:{hazards.length} ⊕{eqCount} 🔥{wildfires.length} ⚠
+            {otherHazards.length} GLOBE-DIST:
+            {globeZoomDist.toFixed(2)}
           </div>
 
           {/* Top-left HUD */}
@@ -1711,8 +1775,8 @@ export default function App() {
                 marginTop: 1,
               }}
             >
-              GLOBE 3D · {activeCity.toUpperCase()} · DIST:
-              {globeZoomDist.toFixed(2)} AU
+              GLOBE 3D · {mapCenter.lat.toFixed(1)}°, {mapCenter.lng.toFixed(1)}
+              ° · DIST {globeZoomDist.toFixed(2)}
             </div>
           </div>
 
@@ -1733,7 +1797,7 @@ export default function App() {
               <span style={{ color: "#ff3333" }}>●</span> REC {utcTime}
             </div>
             <div style={{ color: "rgba(0,255,255,0.5)", fontSize: 8 }}>
-              ORB: 47439 PASS: DESC-179
+              UPD {lastHazardUpdate}
             </div>
             <div style={{ marginTop: 6 }}>
               <div style={{ color: "rgba(0,255,255,0.4)", fontSize: 7 }}>
@@ -1785,14 +1849,13 @@ export default function App() {
               transition: "right 0.3s ease",
             }}
           >
-            <div style={{ color: "#00ffff", fontSize: 9 }}>
-              GLOBE 3D · GSD:{getGSD(globeZoomDist)} NIIRS:
-              {getNIIRS(globeZoomDist)}
+            <div style={{ color: "#ff6b35", fontSize: 9 }}>
+              {criticalCount} CRITICAL · {severeCount} SEVERE
             </div>
             <div style={{ color: "rgba(0,255,255,0.6)", fontSize: 8 }}>
-              DIST:{globeZoomDist.toFixed(3)} · SUN: -50.7° EL
+              TRACKING {hazards.length} HAZARDS · UPD {lastHazardUpdate}
             </div>
-            {layers.weather &&
+            {weatherOn &&
               weatherData.length > 0 &&
               (() => {
                 const nearest = weatherData.reduce((best, w) => {
@@ -1886,7 +1949,7 @@ export default function App() {
               onChange={(e) =>
                 setBloom((b) => ({ ...b, value: +e.target.value }))
               }
-              className="cerebro-slider"
+              className="sentinel-slider"
               style={{ width: "100%" }}
             />
           </div>
@@ -1927,7 +1990,7 @@ export default function App() {
               onChange={(e) =>
                 setSharpen((s) => ({ ...s, value: +e.target.value }))
               }
-              className="cerebro-slider"
+              className="sentinel-slider"
               style={{ width: "100%" }}
             />
           </div>
@@ -1939,7 +2002,7 @@ export default function App() {
               data-ocid="controls.hud.toggle"
               onClick={() => {
                 setHudVisible((v) => !v);
-                setStorage("cerebro_hud", !hudVisible);
+                setStorage("sentinel_hud", !hudVisible);
               }}
               style={btnStyle(hudVisible)}
             >
@@ -1947,17 +2010,74 @@ export default function App() {
             </button>
           </div>
 
-          {/* LABELS TOGGLE */}
-          <div style={{ marginBottom: 8 }}>
-            <button
-              type="button"
-              data-ocid="controls.city_labels.toggle"
-              onClick={() => setShowCityLabels((v) => !v)}
-              style={btnStyle(showCityLabels)}
-            >
-              CITY LABELS {showCityLabels ? "ON" : "OFF"}
-            </button>
-          </div>
+          {/* EARTH ENGINE OVERLAY (only when a proxy is configured) */}
+          {geeTemplate && (
+            <div style={{ marginBottom: 12 }}>
+              <div
+                style={{
+                  color: "rgba(0,255,255,0.5)",
+                  fontSize: 7,
+                  marginBottom: 4,
+                  letterSpacing: "0.1em",
+                }}
+              >
+                EARTH ENGINE OVERLAY
+              </div>
+              <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+                <button
+                  type="button"
+                  data-ocid="controls.gee.toggle"
+                  onClick={() => setGeeOn((v) => !v)}
+                  style={btnStyle(geeOn)}
+                >
+                  {geeOn ? "ON" : "OFF"}
+                </button>
+                <span
+                  style={{
+                    color: "rgba(0,255,255,0.5)",
+                    fontSize: 8,
+                    marginLeft: "auto",
+                    alignSelf: "center",
+                  }}
+                >
+                  {geeOpacity}%
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 1fr",
+                  gap: 3,
+                  marginBottom: 4,
+                }}
+              >
+                {GEE_LAYERS.map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    data-ocid={`controls.gee.${l.id}`}
+                    onClick={() => setGeeLayer(l.id)}
+                    style={{
+                      ...btnStyle(geeLayer === l.id),
+                      fontSize: 7,
+                      padding: "3px 2px",
+                    }}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="range"
+                min={10}
+                max={100}
+                value={geeOpacity}
+                onChange={(e) => setGeeOpacity(+e.target.value)}
+                className="sentinel-slider"
+                style={{ width: "100%" }}
+              />
+            </div>
+          )}
 
           {/* VISUAL MODE */}
           <div style={{ marginBottom: 12 }}>
@@ -2009,7 +2129,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* CITY NAV */}
+          {/* NAVIGATION */}
           <div style={{ marginBottom: 12 }}>
             <div
               style={{
@@ -2019,47 +2139,34 @@ export default function App() {
                 letterSpacing: "0.1em",
               }}
             >
-              CITY NAV
+              NAVIGATION
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {Object.entries(CITIES).map(([name, coords]) => (
-                <button
-                  key={name}
-                  type="button"
-                  data-ocid={`city.${name
-                    .replace(/\s+/g, "-")
-                    .toLowerCase()}.button`}
-                  onClick={() => {
-                    setActiveCity(name);
-                    setStorage("cerebro_city", name);
-                    // Fly camera to this city
-                    setTargetCenter({ lat: coords.lat, lng: coords.lng });
-                    addFeed("SYSTEM", `Navigating to ${name}`);
-                  }}
-                  style={{
-                    padding: "2px 8px",
-                    fontSize: 8,
-                    textAlign: "left",
-                    cursor: "pointer",
-                    fontFamily: "monospace",
-                    letterSpacing: "0.06em",
-                    background:
-                      activeCity === name
-                        ? "rgba(0,255,255,0.12)"
-                        : "transparent",
-                    border: `1px solid ${
-                      activeCity === name
-                        ? "rgba(0,255,255,0.4)"
-                        : "rgba(0,255,255,0.1)"
-                    }`,
-                    color:
-                      activeCity === name ? "#00ffff" : "rgba(0,255,255,0.5)",
-                  }}
-                >
-                  {name.toUpperCase()}
-                </button>
-              ))}
-            </div>
+            <button
+              type="button"
+              data-ocid="controls.jump_severest.button"
+              onClick={() => {
+                const target =
+                  rankNotices(notices)[0] ??
+                  [...hazards].sort((a, b) => b.severity - a.severity)[0];
+                if (!target) {
+                  addFeed("SYSTEM", "No active hazards to jump to");
+                  return;
+                }
+                setTargetCenter({ lat: target.lat, lng: target.lng });
+                addFeed(
+                  "SYSTEM",
+                  `Jumping to severest — ${KIND_META[target.kind].label}`,
+                );
+              }}
+              style={{
+                ...btnStyle(false),
+                width: "100%",
+                padding: "6px 8px",
+                textAlign: "left",
+              }}
+            >
+              ⤢ JUMP TO SEVEREST EVENT
+            </button>
           </div>
         </div>
       </div>

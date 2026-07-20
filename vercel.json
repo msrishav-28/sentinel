@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "pnpm install --prefer-offline",
+  "buildCommand": "pnpm --dir src/frontend build",
+  "outputDirectory": "src/frontend/dist",
+  "framework": null
+}

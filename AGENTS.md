@@ -1,28 +1,40 @@
 # Project Guidance
 
-## User Preferences
-
-[No preferences yet]
+Sentinel is a standalone Vite + React + Three.js single-page app. No backend,
+no canister, no CSS framework — it fetches live hazard data directly in the
+browser and builds to static assets. An optional serverless proxy in `/api`
+adds a Google Earth Engine raster overlay.
 
 ## Verified Commands
 
-**Frontend** (run from `src/frontend/`):
+Run from `src/frontend/` (or use the root passthrough scripts):
 
 - **install**: `pnpm install --prefer-offline`
+- **dev**: `pnpm dev` (append `?demo` for offline seeded data)
+- **test**: `pnpm test` (vitest)
 - **typecheck**: `pnpm typecheck`
-- **lint fix**: `pnpm fix`
-- **build**: `pnpm build`
+- **lint**: `pnpm check` · **lint-fix**: `pnpm fix`
+- **build**: `pnpm build` (outputs static `dist/`)
+- **preview**: `pnpm preview`
 
-**Backend** (run from `src/backend/`):
+## Architecture
 
-- **install**: `mops install`
-- **typecheck**: `mops check --fix`
-- **build**: `mops build`
+- `src/frontend/src/hazards/` — portable core: unified `HazardEvent` model
+  (`types.ts`), live source adapters (`sources.ts`: USGS + NASA EONET), the
+  diff/noticing engine (`noticing.ts`), climate hazards (`climate.ts`: extreme
+  heat/cold from weather + curated warming/ozone indicators), demo seed
+  (`demo.ts`), optional GEE client (`gee.ts`), and their `*.test.ts` suites.
+- `src/frontend/src/GlobeView.tsx` — the 3D globe (tiles, camera, markers,
+  optional raster overlay). Treat its core as stable; extend via additive props.
+- `src/frontend/src/App.tsx` — composition, HUD, per-kind layer toggles.
+- `api/gee-tiles.mjs` — optional Earth Engine tile proxy (Vercel serverless
+  function). Degrades to a no-op when the dep/credential is absent — see
+  `docs/gee.md`.
+- `vercel.json` — Vercel build config. CI is `.github/workflows/ci.yml`.
 
-**Backend and frontend integration** (run from root):
+## Conventions
 
-- **generate bindings**: `pnpm bindgen` This step is necessary to ensure the frontend can call the backend methods.
-
-## Learnings
-
-[No learnings yet]
+- Keep source adapters defensive: never throw; a dead source returns `[]`.
+- Parsers are pure and unit-tested; keep fetch and parse separate.
+- Keep everything typechecked, lint-clean (biome), and tested before committing.
+- Optional features (GEE) must degrade to a no-op when unconfigured.

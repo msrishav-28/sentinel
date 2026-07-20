@@ -1,19 +1,18 @@
 {
-  "name": "@caffeine/template-app",
+  "name": "sentinel",
+  "version": "0.1.0",
+  "private": true,
   "type": "module",
   "engines": {
-    "node": ">=16.0.0",
-    "pnpm": ">=7.0.0",
-    "npm": "please use pnpm"
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
   },
   "scripts": {
+    "dev": "pnpm --dir src/frontend dev",
     "build": "pnpm -r --if-present run build",
     "typecheck": "pnpm -r --if-present run typecheck",
     "check": "pnpm -r --if-present run check",
     "fix": "pnpm -r --if-present run fix",
-    "bindgen": "caffeine-bindgen --did-file ./src/backend/dist/backend.did --out-dir ./src/frontend/src --actor-interface-file --force"
-  },
-  "devDependencies": {
-    "sharp": "^0.34.4"
+    "test": "pnpm -r --if-present run test"
   }
 }

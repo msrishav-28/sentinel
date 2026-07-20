@@ -46,11 +46,30 @@ export interface DeforestationItem {
   source: string;
 }
 
+// Generic multi-hazard marker (volcano, storm, flood, landslide, …). Rendered
+// as a colour/size-coded blip reusing the earthquake marker vocabulary, so new
+// hazard kinds can appear on the globe without new bespoke geometry.
+export interface HazardMarker {
+  id: string;
+  lat: number;
+  lng: number;
+  color: string;
+  size: number; // base sphere radius in globe units
+  kind: string;
+}
+
 interface GlobeViewProps {
   eqData: EqItem[];
   weatherData: WeatherPoint[];
   fireData: FireItem[];
   deforestationData: DeforestationItem[];
+  /** Generic multi-hazard blips (volcano, storm, flood, …). Optional and
+   *  additive: omit it and the globe renders exactly as before. */
+  hazardData?: HazardMarker[];
+  /** Optional Google Earth Engine XYZ tile template for a raster overlay. */
+  geeTileUrlTemplate?: string;
+  /** Overlay opacity 0..1 (default 0.6). */
+  geeOpacity?: number;
   layers: {
     earthquakes: boolean;
     weather: boolean;
@@ -62,11 +81,9 @@ interface GlobeViewProps {
   onEarthquakeClick: (eq: EqItem) => void;
   onFireClick: (f: FireItem) => void;
   onDeforestationClick: (d: DeforestationItem) => void;
+  onHazardClick?: (id: string) => void;
   onCenterChange: (lat: number, lng: number) => void;
   onZoomChange: (distance: number) => void;
-  cityData: Array<{ name: string; lat: number; lng: number }>;
-  onCityClick: (name: string, lat: number, lng: number) => void;
-  showCityLabels?: boolean;
   /** When true (default), the globe slowly drifts via OrbitControls autoRotate.
    *  Set to false while the user is actively piloting to pause ambient drift. */
   autoRotate?: boolean;
@@ -436,161 +453,83 @@ function TiledGlobe() {
   );
 }
 
-// ─── Three.js sprite labels (no HTML canvas overlay) ──────────────────────────
-// Pure WebGL sprites rendered at renderOrder=9000 with depthTest=false.
-// They never touch the tile render pipeline.
+// ─── GEE raster overlay (optional) ────────────────────────────────────────────
+// Renders a Google Earth Engine XYZ tile template as a semi-transparent global
+// overlay at a fixed low zoom (z=3, 64 tiles). Only mounts when a template is
+// supplied, so it's a no-op when GEE isn't configured. depthTest keeps the far
+// hemisphere correctly occluded by the base globe.
 
-const labelTexCache = new Map<string, THREE.CanvasTexture>();
-
-function makeLabelTexture(text: string, color: string): THREE.CanvasTexture {
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d")!;
-  ctx.font = "bold 26px monospace";
-  const textW = Math.ceil(ctx.measureText(text).width);
-  canvas.width = textW + 16;
-  canvas.height = 32;
-  ctx.font = "bold 26px monospace";
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = color;
-  ctx.fillText(text, 8, 24);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.needsUpdate = true;
-  return tex;
-}
-
-function getCachedLabelTex(text: string, color: string): THREE.CanvasTexture {
-  const k = `${text}|${color}`;
-  if (!labelTexCache.has(k)) {
-    labelTexCache.set(k, makeLabelTexture(text, color));
-  }
-  return labelTexCache.get(k)!;
-}
-
-function CityLabel({
-  city,
-}: { city: { name: string; lat: number; lng: number } }) {
-  const text = city.name.toUpperCase();
-  const [bx, by, bz] = latLngToVec3(city.lat, city.lng, 1.001);
-  const texture = useMemo(() => getCachedLabelTex(text, "#00ffcc"), [text]);
-  const aspect = texture.image
-    ? (texture.image as HTMLCanvasElement).width /
-      (texture.image as HTMLCanvasElement).height
-    : 5;
-  const sh = 0.007;
-  const sw = sh * aspect;
-  const norm = new THREE.Vector3(bx, by, bz).normalize();
-  const east = new THREE.Vector3(0, 1, 0).cross(norm).normalize();
-  const down = norm.clone().cross(east).normalize().negate();
-  const baseOffset = east
-    .clone()
-    .multiplyScalar(sw * 0.6)
-    .add(down.clone().multiplyScalar(sh * 0.5));
-  const spriteRef = useRef<THREE.Sprite>(null!);
-  const { camera } = useThree();
-  useFrame(() => {
-    if (!spriteRef.current) return;
-    const cdist = camera.position.length();
-    const scale = cdist / 2.5;
-    spriteRef.current.position.set(
-      bx + baseOffset.x * scale,
-      by + baseOffset.y * scale,
-      bz + baseOffset.z * scale,
-    );
-  });
-  return (
-    <sprite
-      ref={spriteRef}
-      position={[bx + baseOffset.x, by + baseOffset.y, bz + baseOffset.z]}
-      scale={[sw, sh, 1]}
-      renderOrder={9000}
-    >
-      <spriteMaterial
-        map={texture}
-        transparent
-        alphaTest={0.01}
-        depthWrite={false}
-        depthTest={false}
-        sizeAttenuation={false}
-      />
-    </sprite>
-  );
-}
-
-// ─── City marker ──────────────────────────────────────────────────────────────
-
-function CityMarker({
-  lat,
-  lng,
-  onClick,
+function RasterOverlay({
+  template,
+  opacity,
 }: {
-  name: string;
-  lat: number;
-  lng: number;
-  onClick: () => void;
-  visible: boolean;
+  template: string;
+  opacity: number;
 }) {
-  const [x, y, z] = latLngToVec3(lat, lng, 1.001);
+  const groupRef = useRef<THREE.Group>(null!);
 
-  const pinTexture = useMemo(() => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 32;
-    canvas.height = 32;
-    const ctx = canvas.getContext("2d")!;
-    ctx.clearRect(0, 0, 32, 32);
-    ctx.strokeStyle = "#00ffcc";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(16, 16, 10, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.fillStyle = "#00ffcc";
-    ctx.beginPath();
-    ctx.arc(16, 16, 4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(16, 4);
-    ctx.lineTo(16, 12);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(16, 20);
-    ctx.lineTo(16, 28);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(4, 16);
-    ctx.lineTo(12, 16);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(20, 16);
-    ctx.lineTo(28, 16);
-    ctx.stroke();
-    return new THREE.CanvasTexture(canvas);
-  }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: opacity updated in a separate effect
+  useEffect(() => {
+    const group = groupRef.current;
+    if (!group) return;
+    const loader = new THREE.TextureLoader();
+    const z = 3;
+    const n = 2 ** z;
+    const meshes: THREE.Mesh[] = [];
+    for (let ty = 0; ty < n; ty++) {
+      for (let tx = 0; tx < n; tx++) {
+        const url = template
+          .replace("{z}", String(z))
+          .replace("{x}", String(tx))
+          .replace("{y}", String(ty));
+        loader.load(
+          url,
+          (tex) => {
+            tex.colorSpace = THREE.SRGBColorSpace;
+            const geom = createTilePatchGeometry(
+              tile2lat(ty, z),
+              tile2lat(ty + 1, z),
+              tile2lon(tx, z),
+              tile2lon(tx + 1, z),
+            );
+            const mat = new THREE.MeshBasicMaterial({
+              map: tex,
+              transparent: true,
+              opacity,
+              depthTest: true,
+              depthWrite: false,
+            });
+            const mesh = new THREE.Mesh(geom, mat);
+            mesh.scale.setScalar(1.004); // float just above the base imagery
+            mesh.renderOrder = 30;
+            meshes.push(mesh);
+            group.add(mesh);
+          },
+          undefined,
+          () => {},
+        );
+      }
+    }
+    return () => {
+      for (const m of meshes) {
+        m.geometry.dispose();
+        (m.material as THREE.MeshBasicMaterial).map?.dispose();
+        (m.material as THREE.MeshBasicMaterial).dispose();
+        group.remove(m);
+      }
+    };
+  }, [template]);
 
-  useEffect(() => () => pinTexture.dispose(), [pinTexture]);
+  useEffect(() => {
+    const group = groupRef.current;
+    if (!group) return;
+    for (const m of group.children) {
+      const mat = (m as THREE.Mesh).material as THREE.MeshBasicMaterial;
+      mat.opacity = opacity;
+    }
+  }, [opacity]);
 
-  return (
-    <group>
-      <sprite position={[x, y, z]} scale={[0.013, 0.013, 1]} renderOrder={9000}>
-        <spriteMaterial
-          map={pinTexture}
-          transparent
-          depthWrite={false}
-          depthTest={false}
-          sizeAttenuation={false}
-        />
-      </sprite>
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: Three.js mesh */}
-      <mesh
-        position={[x, y, z]}
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          onClick();
-        }}
-      >
-        <sphereGeometry args={[0.02, 6, 6]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
-    </group>
-  );
+  return <group ref={groupRef} />;
 }
 
 function WeatherMarker({ point }: { point: WeatherPoint }) {
@@ -764,6 +703,259 @@ function DeforestationPatch({
   );
 }
 
+// ─── Generic hazard blip (volcano, storm, flood, landslide, …) ────────────────
+// Reuses the earthquake marker vocabulary (glowing sphere + halo ring) but
+// takes an explicit colour + size so any hazard kind can be plotted uniformly.
+
+function HazardBlip({
+  marker,
+  position,
+  onClick,
+}: {
+  marker: HazardMarker;
+  position: [number, number, number];
+  onClick: () => void;
+}) {
+  const [x, y, z] = position;
+  const ringQuat = useMemo(() => {
+    const norm = new THREE.Vector3(x, y, z).normalize();
+    return new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0),
+      norm,
+    );
+  }, [x, y, z]);
+
+  return (
+    <group>
+      <mesh position={position} renderOrder={55}>
+        <sphereGeometry args={[marker.size, 10, 10]} />
+        <meshBasicMaterial
+          color={marker.color}
+          transparent
+          opacity={0.6}
+          depthTest={false}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh position={position} quaternion={ringQuat} renderOrder={55}>
+        <torusGeometry args={[marker.size * 2.1, marker.size * 0.28, 8, 24]} />
+        <meshBasicMaterial
+          color={marker.color}
+          transparent
+          opacity={0.3}
+          depthTest={false}
+          depthWrite={false}
+        />
+      </mesh>
+      {/* Invisible hit target */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: Three.js mesh */}
+      <mesh
+        position={position}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          onClick();
+        }}
+      >
+        <sphereGeometry args={[Math.max(0.016, marker.size * 1.5), 6, 6]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+    </group>
+  );
+}
+
+// ─── Distinct per-hazard markers ──────────────────────────────────────────────
+// Volcano / storm / flood get their own animated marker language so the globe
+// reads at a glance; everything else falls back to HazardBlip. All are additive.
+
+interface HazardBlipProps {
+  marker: HazardMarker;
+  position: [number, number, number];
+  onClick: () => void;
+}
+
+// Shared invisible click target so every marker is easy to hit.
+function HitTarget({
+  position,
+  size,
+  onClick,
+}: {
+  position: [number, number, number];
+  size: number;
+  onClick: () => void;
+}) {
+  return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: Three.js mesh
+    <mesh
+      position={position}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+    >
+      <sphereGeometry args={[Math.max(0.016, size * 1.6), 6, 6]} />
+      <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+    </mesh>
+  );
+}
+
+// Volcano: pulsing core + an outward eruption cone along the surface normal.
+function VolcanoBlip({ marker, position, onClick }: HazardBlipProps) {
+  const coreRef = useRef<THREE.Mesh>(null!);
+  const size = marker.size;
+  const normal = useMemo(
+    () => new THREE.Vector3(...position).normalize(),
+    [position],
+  );
+  const coneQuat = useMemo(
+    () =>
+      new THREE.Quaternion().setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0),
+        normal,
+      ),
+    [normal],
+  );
+  const coneLen = size * 3;
+  const conePos: [number, number, number] = [
+    position[0] + normal.x * coneLen * 0.5,
+    position[1] + normal.y * coneLen * 0.5,
+    position[2] + normal.z * coneLen * 0.5,
+  ];
+  useFrame((s) => {
+    if (coreRef.current) {
+      const p = 0.8 + 0.35 * Math.sin(s.clock.elapsedTime * 3.4);
+      coreRef.current.scale.setScalar(p);
+    }
+  });
+  return (
+    <group>
+      <mesh ref={coreRef} position={position} renderOrder={57}>
+        <sphereGeometry args={[size, 12, 12]} />
+        <meshBasicMaterial
+          color={marker.color}
+          transparent
+          opacity={0.9}
+          blending={THREE.AdditiveBlending}
+          depthTest={false}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh position={conePos} quaternion={coneQuat} renderOrder={56}>
+        <coneGeometry args={[size * 1.3, coneLen, 12, 1, true]} />
+        <meshBasicMaterial
+          color={marker.color}
+          transparent
+          opacity={0.22}
+          side={THREE.DoubleSide}
+          blending={THREE.AdditiveBlending}
+          depthTest={false}
+          depthWrite={false}
+        />
+      </mesh>
+      <HitTarget position={position} size={size} onClick={onClick} />
+    </group>
+  );
+}
+
+// Severe storm: bright core + a rotating spiral arc (swirl).
+function StormBlip({ marker, position, onClick }: HazardBlipProps) {
+  const armRef = useRef<THREE.Mesh>(null!);
+  const size = marker.size;
+  const quat = useMemo(() => {
+    const n = new THREE.Vector3(...position).normalize();
+    return new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0, 0, 1),
+      n,
+    );
+  }, [position]);
+  useFrame((s) => {
+    if (armRef.current) armRef.current.rotation.z = s.clock.elapsedTime * 1.6;
+  });
+  return (
+    <group>
+      <mesh position={position} renderOrder={57}>
+        <sphereGeometry args={[size * 0.55, 8, 8]} />
+        <meshBasicMaterial
+          color={marker.color}
+          transparent
+          opacity={0.95}
+          depthTest={false}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh ref={armRef} position={position} quaternion={quat} renderOrder={56}>
+        <torusGeometry args={[size * 1.8, size * 0.22, 6, 24, Math.PI * 1.4]} />
+        <meshBasicMaterial
+          color={marker.color}
+          transparent
+          opacity={0.6}
+          depthTest={false}
+          depthWrite={false}
+        />
+      </mesh>
+      <HitTarget position={position} size={size} onClick={onClick} />
+    </group>
+  );
+}
+
+// Flood: core + two expanding-and-fading ripple rings.
+function FloodBlip({ marker, position, onClick }: HazardBlipProps) {
+  const r1 = useRef<THREE.Mesh>(null!);
+  const r2 = useRef<THREE.Mesh>(null!);
+  const size = marker.size;
+  const quat = useMemo(() => {
+    const n = new THREE.Vector3(...position).normalize();
+    return new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0, 0, 1),
+      n,
+    );
+  }, [position]);
+  useFrame((s) => {
+    const t = s.clock.elapsedTime;
+    const drive = (ref: React.MutableRefObject<THREE.Mesh>, phase: number) => {
+      if (!ref.current) return;
+      const v = (t * 0.6 + phase) % 1;
+      ref.current.scale.setScalar(0.5 + v * 2.6);
+      (ref.current.material as THREE.MeshBasicMaterial).opacity = 0.5 * (1 - v);
+    };
+    drive(r1, 0);
+    drive(r2, 0.5);
+  });
+  return (
+    <group>
+      <mesh position={position} renderOrder={57}>
+        <sphereGeometry args={[size * 0.5, 8, 8]} />
+        <meshBasicMaterial
+          color={marker.color}
+          transparent
+          opacity={0.95}
+          depthTest={false}
+          depthWrite={false}
+        />
+      </mesh>
+      {[r1, r2].map((ref, i) => (
+        <mesh
+          key={`ripple-${i === 0 ? "a" : "b"}`}
+          ref={ref}
+          position={position}
+          quaternion={quat}
+          renderOrder={55}
+        >
+          <ringGeometry args={[size * 0.88, size, 20]} />
+          <meshBasicMaterial
+            color={marker.color}
+            transparent
+            opacity={0.4}
+            side={THREE.DoubleSide}
+            depthTest={false}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+      <HitTarget position={position} size={size} onClick={onClick} />
+    </group>
+  );
+}
+
 // ─── Earth component ───────────────────────────────────────────────────────────
 
 interface EarthProps extends Omit<GlobeViewProps, "globeCenter"> {
@@ -776,18 +968,19 @@ function Earth({
   weatherData,
   fireData,
   deforestationData,
+  hazardData,
+  geeTileUrlTemplate,
+  geeOpacity,
   layers,
   onEarthquakeClick,
   onFireClick,
   onDeforestationClick,
+  onHazardClick,
   onCenterChange,
   onZoomChange,
-  cityData,
-  onCityClick,
   initCenter,
   targetCenter,
   cameraDistRef,
-  showCityLabels: showCityLabelsProp = true,
 }: EarthProps) {
   const { camera } = useThree();
   const animTargetRef = useRef<THREE.Vector3 | null>(null);
@@ -849,6 +1042,14 @@ function Earth({
   return (
     <>
       <TiledGlobe />
+
+      {/* Optional GEE raster overlay */}
+      {geeTileUrlTemplate && (
+        <RasterOverlay
+          template={geeTileUrlTemplate}
+          opacity={geeOpacity ?? 0.6}
+        />
+      )}
 
       {/* Atmosphere */}
       <mesh renderOrder={20}>
@@ -971,25 +1172,27 @@ function Earth({
             );
           })}
 
+      {/* ── MULTI-HAZARD BLIPS (volcano, storm, flood, landslide, …) ── */}
+      {(hazardData ?? [])
+        .filter((h) => isVisible(h.lat, h.lng))
+        .map((h) => {
+          const [x, y, z] = latLngToVec3(h.lat, h.lng, 1.0035);
+          const props = {
+            marker: h,
+            position: [x, y, z] as [number, number, number],
+            onClick: () => onHazardClick?.(h.id),
+          };
+          const key = `hz-${h.id}`;
+          if (h.kind === "volcano") return <VolcanoBlip key={key} {...props} />;
+          if (h.kind === "severeStorm")
+            return <StormBlip key={key} {...props} />;
+          if (h.kind === "flood") return <FloodBlip key={key} {...props} />;
+          return <HazardBlip key={key} {...props} />;
+        })}
+
       {/* ── WEATHER ── */}
       {layers.weather &&
         weatherData.map((w) => <WeatherMarker key={`w-${w.city}`} point={w} />)}
-
-      {/* ── CITIES ── */}
-      {cityData
-        .filter((city) => isVisible(city.lat, city.lng))
-        .map((city) => (
-          <group key={`city-${city.name}`}>
-            <CityMarker
-              name={city.name}
-              lat={city.lat}
-              lng={city.lng}
-              onClick={() => onCityClick(city.name, city.lat, city.lng)}
-              visible={showCityLabelsProp}
-            />
-            {showCityLabelsProp && <CityLabel city={city} />}
-          </group>
-        ))}
     </>
   );
 }

@@ -1,19 +1,20 @@
 {
-  "overview": "A living 3D globe that watches the planet for fire and deforestation, notices what's new or worsening on its own, and quietly tells you what it's found.",
+  "overview": "Sentinel is a living 3D globe that watches Earth for natural disasters — earthquakes, wildfires, volcanoes, severe storms, floods, landslides and more — and quietly surfaces what's new or worsening on its own.",
   "features": [
-    "3D Earth globe with live fire and deforestation threat layers",
-    "Backend noticing engine that fetches environmental data and detects new or worsening events",
-    "Quiet severity-weighted feed that surfaces what the globe has noticed",
+    "Live multi-hazard globe fed by USGS earthquakes and NASA EONET (wildfires, volcanoes, storms, floods, landslides, drought, ice, dust)",
+    "Unified hazard model with per-kind severity weighting and per-kind layer toggles",
+    "Client-side noticing engine that surfaces only new, escalating, or worsening events",
     "Ambient globe drift and proactive auto-fly to the most severe recent event",
-    "Tactical instrument feel with refined HUD"
+    "Tactical instrument HUD, deployable as a standalone static site"
   ],
   "category": "showcase",
   "tags": [
     "3d-globe",
-    "environmental",
+    "natural-disasters",
+    "multi-hazard",
     "tactical",
     "real-time",
-    "internet-computer"
+    "web-app"
   ],
-  "last_updated": "2026-07-01T18:31:08.016Z"
+  "last_updated": "2026-07-20T00:00:00.000Z"
 }
