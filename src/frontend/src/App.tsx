@@ -544,7 +544,7 @@ export default function App() {
     getStorage("sentinel_weather", false),
   );
 
-  // Optional Google Earth Engine raster overlay (see /server). Absent unless a
+  // Optional Google Earth Engine raster overlay (see docs/gee.md). Absent unless a
   // proxy is configured — the control self-hides when unavailable.
   const [geeLayer, setGeeLayer] = useState<GeeLayerId>("temperature");
   const [geeTemplate, setGeeTemplate] = useState<string | null>(null);

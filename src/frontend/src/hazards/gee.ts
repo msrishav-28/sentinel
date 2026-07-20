@@ -1,6 +1,6 @@
 // ─── Google Earth Engine raster overlay (optional) ────────────────────────────
 //
-// Fetches an XYZ tile-URL template from the GEE tile proxy (see /server). The
+// Fetches an XYZ tile-URL template from the GEE tile proxy (see docs/gee.md). The
 // browser then renders those tiles as a raster overlay on the globe. Entirely
 // optional: any failure (proxy not deployed, GEE not configured, network error)
 // resolves to null and the app simply shows no overlay.
