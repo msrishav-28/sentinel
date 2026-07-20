@@ -6,6 +6,7 @@ import GlobeView, {
   type HazardMarker,
   type WeatherPoint,
 } from "./GlobeView";
+import { seedHazards } from "./hazards/demo";
 import {
   type Notice,
   type NoticeReason,
@@ -21,6 +22,12 @@ import {
   KIND_META,
   severityLabel,
 } from "./hazards/types";
+
+// Demo/offline mode: open with `?demo` to render a seeded, globe-wide set of
+// hazards without any network — bulletproof for a venue with flaky wifi.
+const DEMO_MODE =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).has("demo");
 
 // ─── Types ───────────────────────────────────────────────────────────────
 type StyleMode = "Normal" | "CRT" | "NVG" | "FLIR" | "Anime" | "Noir" | "Snow";
@@ -643,11 +650,15 @@ export default function App() {
 
   const refreshHazards = useCallback(async () => {
     let result: Awaited<ReturnType<typeof fetchAllHazards>>;
-    try {
-      result = await fetchAllHazards();
-    } catch {
-      setLastHazardUpdate("failed");
-      return;
+    if (DEMO_MODE) {
+      result = { hazards: seedHazards(), sourceOk: { DEMO: true } };
+    } else {
+      try {
+        result = await fetchAllHazards();
+      } catch {
+        setLastHazardUpdate("failed");
+        return;
+      }
     }
     const now = Date.now();
     const { notices: fresh, index } = diffHazards(
@@ -1160,8 +1171,15 @@ export default function App() {
               letterSpacing: "0.06em",
             }}
           >
-            SRC USGS {sourceOk.USGS ? "●" : "○"} · EONET{" "}
-            {sourceOk.EONET ? "●" : "○"} · UPD {lastHazardUpdate}
+            {DEMO_MODE ? (
+              <span style={{ color: "#ffaa33" }}>◆ DEMO DATA</span>
+            ) : (
+              <>
+                SRC USGS {sourceOk.USGS ? "●" : "○"} · EONET{" "}
+                {sourceOk.EONET ? "●" : "○"}
+              </>
+            )}{" "}
+            · UPD {lastHazardUpdate}
           </div>
         </div>
 

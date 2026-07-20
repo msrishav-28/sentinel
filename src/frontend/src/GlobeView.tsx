@@ -840,6 +840,199 @@ function HazardBlip({
   );
 }
 
+// ─── Distinct per-hazard markers ──────────────────────────────────────────────
+// Volcano / storm / flood get their own animated marker language so the globe
+// reads at a glance; everything else falls back to HazardBlip. All are additive.
+
+interface HazardBlipProps {
+  marker: HazardMarker;
+  position: [number, number, number];
+  onClick: () => void;
+}
+
+// Shared invisible click target so every marker is easy to hit.
+function HitTarget({
+  position,
+  size,
+  onClick,
+}: {
+  position: [number, number, number];
+  size: number;
+  onClick: () => void;
+}) {
+  return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: Three.js mesh
+    <mesh
+      position={position}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+    >
+      <sphereGeometry args={[Math.max(0.016, size * 1.6), 6, 6]} />
+      <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+    </mesh>
+  );
+}
+
+// Volcano: pulsing core + an outward eruption cone along the surface normal.
+function VolcanoBlip({ marker, position, onClick }: HazardBlipProps) {
+  const coreRef = useRef<THREE.Mesh>(null!);
+  const size = marker.size;
+  const normal = useMemo(
+    () => new THREE.Vector3(...position).normalize(),
+    [position],
+  );
+  const coneQuat = useMemo(
+    () =>
+      new THREE.Quaternion().setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0),
+        normal,
+      ),
+    [normal],
+  );
+  const coneLen = size * 3;
+  const conePos: [number, number, number] = [
+    position[0] + normal.x * coneLen * 0.5,
+    position[1] + normal.y * coneLen * 0.5,
+    position[2] + normal.z * coneLen * 0.5,
+  ];
+  useFrame((s) => {
+    if (coreRef.current) {
+      const p = 0.8 + 0.35 * Math.sin(s.clock.elapsedTime * 3.4);
+      coreRef.current.scale.setScalar(p);
+    }
+  });
+  return (
+    <group>
+      <mesh ref={coreRef} position={position} renderOrder={57}>
+        <sphereGeometry args={[size, 12, 12]} />
+        <meshBasicMaterial
+          color={marker.color}
+          transparent
+          opacity={0.9}
+          blending={THREE.AdditiveBlending}
+          depthTest={false}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh position={conePos} quaternion={coneQuat} renderOrder={56}>
+        <coneGeometry args={[size * 1.3, coneLen, 12, 1, true]} />
+        <meshBasicMaterial
+          color={marker.color}
+          transparent
+          opacity={0.22}
+          side={THREE.DoubleSide}
+          blending={THREE.AdditiveBlending}
+          depthTest={false}
+          depthWrite={false}
+        />
+      </mesh>
+      <HitTarget position={position} size={size} onClick={onClick} />
+    </group>
+  );
+}
+
+// Severe storm: bright core + a rotating spiral arc (swirl).
+function StormBlip({ marker, position, onClick }: HazardBlipProps) {
+  const armRef = useRef<THREE.Mesh>(null!);
+  const size = marker.size;
+  const quat = useMemo(() => {
+    const n = new THREE.Vector3(...position).normalize();
+    return new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0, 0, 1),
+      n,
+    );
+  }, [position]);
+  useFrame((s) => {
+    if (armRef.current) armRef.current.rotation.z = s.clock.elapsedTime * 1.6;
+  });
+  return (
+    <group>
+      <mesh position={position} renderOrder={57}>
+        <sphereGeometry args={[size * 0.55, 8, 8]} />
+        <meshBasicMaterial
+          color={marker.color}
+          transparent
+          opacity={0.95}
+          depthTest={false}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh ref={armRef} position={position} quaternion={quat} renderOrder={56}>
+        <torusGeometry args={[size * 1.8, size * 0.22, 6, 24, Math.PI * 1.4]} />
+        <meshBasicMaterial
+          color={marker.color}
+          transparent
+          opacity={0.6}
+          depthTest={false}
+          depthWrite={false}
+        />
+      </mesh>
+      <HitTarget position={position} size={size} onClick={onClick} />
+    </group>
+  );
+}
+
+// Flood: core + two expanding-and-fading ripple rings.
+function FloodBlip({ marker, position, onClick }: HazardBlipProps) {
+  const r1 = useRef<THREE.Mesh>(null!);
+  const r2 = useRef<THREE.Mesh>(null!);
+  const size = marker.size;
+  const quat = useMemo(() => {
+    const n = new THREE.Vector3(...position).normalize();
+    return new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0, 0, 1),
+      n,
+    );
+  }, [position]);
+  useFrame((s) => {
+    const t = s.clock.elapsedTime;
+    const drive = (ref: React.MutableRefObject<THREE.Mesh>, phase: number) => {
+      if (!ref.current) return;
+      const v = (t * 0.6 + phase) % 1;
+      ref.current.scale.setScalar(0.5 + v * 2.6);
+      (ref.current.material as THREE.MeshBasicMaterial).opacity = 0.5 * (1 - v);
+    };
+    drive(r1, 0);
+    drive(r2, 0.5);
+  });
+  return (
+    <group>
+      <mesh position={position} renderOrder={57}>
+        <sphereGeometry args={[size * 0.5, 8, 8]} />
+        <meshBasicMaterial
+          color={marker.color}
+          transparent
+          opacity={0.95}
+          depthTest={false}
+          depthWrite={false}
+        />
+      </mesh>
+      {[r1, r2].map((ref, i) => (
+        <mesh
+          key={`ripple-${i === 0 ? "a" : "b"}`}
+          ref={ref}
+          position={position}
+          quaternion={quat}
+          renderOrder={55}
+        >
+          <ringGeometry args={[size * 0.88, size, 20]} />
+          <meshBasicMaterial
+            color={marker.color}
+            transparent
+            opacity={0.4}
+            side={THREE.DoubleSide}
+            depthTest={false}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+      <HitTarget position={position} size={size} onClick={onClick} />
+    </group>
+  );
+}
+
 // ─── Earth component ───────────────────────────────────────────────────────────
 
 interface EarthProps extends Omit<GlobeViewProps, "globeCenter"> {
@@ -1054,14 +1247,17 @@ function Earth({
         .filter((h) => isVisible(h.lat, h.lng))
         .map((h) => {
           const [x, y, z] = latLngToVec3(h.lat, h.lng, 1.0035);
-          return (
-            <HazardBlip
-              key={`hz-${h.id}`}
-              marker={h}
-              position={[x, y, z]}
-              onClick={() => onHazardClick?.(h.id)}
-            />
-          );
+          const props = {
+            marker: h,
+            position: [x, y, z] as [number, number, number],
+            onClick: () => onHazardClick?.(h.id),
+          };
+          const key = `hz-${h.id}`;
+          if (h.kind === "volcano") return <VolcanoBlip key={key} {...props} />;
+          if (h.kind === "severeStorm")
+            return <StormBlip key={key} {...props} />;
+          if (h.kind === "flood") return <FloodBlip key={key} {...props} />;
+          return <HazardBlip key={key} {...props} />;
         })}
 
       {/* ── WEATHER ── */}
