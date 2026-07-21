@@ -36,10 +36,11 @@ function initEarthEngine() {
     } catch {
       throw new Error("GEE_SERVICE_ACCOUNT_JSON is not valid JSON");
     }
-    // Dynamic import via a variable specifier so the bundler never tries to
-    // resolve it at build time — an absent dependency degrades at runtime
-    // (caught by the caller) instead of failing the build.
-    const pkg = "@google/earthengine";
+    // Import via a runtime-computed specifier so the serverless bundler
+    // (esbuild) can't constant-fold and resolve it at build time. If the
+    // optional dependency is absent, this throws at runtime and is caught by
+    // the caller — it never fails the Vercel build.
+    const pkg = ["@google", "earthengine"].join("/");
     const mod = await import(pkg);
     const ee = mod.default ?? mod;
     await new Promise((resolve, reject) => {
