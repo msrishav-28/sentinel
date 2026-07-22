@@ -36,7 +36,6 @@ const DEMO_MODE =
   new URLSearchParams(window.location.search).has("demo");
 
 // ─── Types ───────────────────────────────────────────────────────────────
-type StyleMode = "Normal" | "CRT" | "NVG" | "FLIR" | "Anime" | "Noir" | "Snow";
 
 // Per-kind visibility for the hazard layers. New hazard kinds join simply by
 // appearing in HAZARD_KINDS — no structural change here.
@@ -303,47 +302,6 @@ const WEATHER_CITIES = [
   { city: "Anchorage", lat: 61.22, lon: -149.9 },
 ];
 
-// ─── Style configs ────────────────────────────────────────────────────────────
-const STYLE_CONFIGS: Record<
-  StyleMode,
-  { filter: string; label: string; color: string }
-> = {
-  Normal: { filter: "", label: "NORMAL", color: "#00ffff" },
-  CRT: {
-    filter:
-      "contrast(1.4) saturate(0.8) brightness(0.9) sepia(0.15) hue-rotate(90deg)",
-    label: "CRT",
-    color: "#33ff33",
-  },
-  NVG: {
-    filter:
-      "hue-rotate(85deg) saturate(4) brightness(0.85) contrast(1.5) sepia(0.2)",
-    label: "NVG",
-    color: "#00ff41",
-  },
-  FLIR: {
-    filter:
-      "grayscale(1) contrast(2) brightness(1.1) sepia(0.4) hue-rotate(10deg)",
-    label: "FLIR",
-    color: "#ff6600",
-  },
-  Anime: {
-    filter: "saturate(2.5) contrast(1.4) brightness(1.05) hue-rotate(-10deg)",
-    label: "ANIME",
-    color: "#ff00ff",
-  },
-  Noir: {
-    filter: "grayscale(1) contrast(2.5) brightness(0.7)",
-    label: "NOIR",
-    color: "#ffffff",
-  },
-  Snow: {
-    filter: "brightness(2) saturate(0.1) contrast(0.8) hue-rotate(190deg)",
-    label: "SNOW",
-    color: "#aaddff",
-  },
-};
-
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 function toDMS(deg: number, isLat: boolean): string {
   const dir = isLat ? (deg >= 0 ? "N" : "S") : deg >= 0 ? "E" : "W";
@@ -531,9 +489,6 @@ function DetailPanel({
 
 // ─── Main App ───────────────────────────────────────────────────────────────────
 export default function App() {
-  const [activeStyle, setActiveStyleRaw] = useState<StyleMode>(() =>
-    getStorage<StyleMode>("sentinel_style", "Normal"),
-  );
   const [hudVisible, setHudVisible] = useState(() =>
     getStorage("sentinel_hud", true),
   );
@@ -779,11 +734,6 @@ export default function App() {
     // current as fresh events are noticed.
   }, [notices]);
 
-  const setActiveStyle = useCallback((s: StyleMode) => {
-    setActiveStyleRaw(s);
-    setStorage("sentinel_style", s);
-  }, []);
-
   // ── Landscape auto-collapse ──
   useEffect(() => {
     const checkOrientation = () => {
@@ -873,8 +823,6 @@ export default function App() {
     });
   }, []);
 
-  const mapStyle = STYLE_CONFIGS[activeStyle];
-
   const feedTypeColor: Record<FeedEvent["type"], string> = {
     EQ: "#ff4400",
     WEATHER: "#aaddff",
@@ -893,9 +841,7 @@ export default function App() {
     sharpen.active && sharpen.value > 0
       ? `contrast(${1 + sharpen.value / 150})`
       : "";
-  const globeFilter = [mapStyle.filter, bloomExtra, sharpenExtra]
-    .filter(Boolean)
-    .join(" ");
+  const globeFilter = [bloomExtra, sharpenExtra].filter(Boolean).join(" ");
   const leftW = leftCollapsed ? 0 : 270;
   const rightW = rightCollapsed ? 0 : 260;
   const globeSize = `min(calc(100vw - ${leftW}px - ${rightW}px), 90dvh)`;
@@ -1766,7 +1712,7 @@ export default function App() {
                 letterSpacing: "0.15em",
               }}
             >
-              {mapStyle.label} MODE ACTIVE
+              SENTINEL · TRACKING {hazards.length}
             </div>
             <div
               style={{
@@ -1798,21 +1744,6 @@ export default function App() {
             </div>
             <div style={{ color: "rgba(0,255,255,0.5)", fontSize: 8 }}>
               UPD {lastHazardUpdate}
-            </div>
-            <div style={{ marginTop: 6 }}>
-              <div style={{ color: "rgba(0,255,255,0.4)", fontSize: 7 }}>
-                ACTIVE STYLE
-              </div>
-              <div
-                style={{
-                  color: mapStyle.color,
-                  fontSize: 16,
-                  fontWeight: 700,
-                  letterSpacing: "0.15em",
-                }}
-              >
-                {mapStyle.label}
-              </div>
             </div>
           </div>
 
@@ -2078,56 +2009,6 @@ export default function App() {
               />
             </div>
           )}
-
-          {/* VISUAL MODE */}
-          <div style={{ marginBottom: 12 }}>
-            <div
-              style={{
-                color: "rgba(0,255,255,0.5)",
-                fontSize: 7,
-                marginBottom: 4,
-                letterSpacing: "0.1em",
-              }}
-            >
-              VISUAL MODE
-            </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 3,
-              }}
-            >
-              {(Object.keys(STYLE_CONFIGS) as StyleMode[]).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  data-ocid={`style.${m.toLowerCase()}.toggle`}
-                  onClick={() => setActiveStyle(m)}
-                  style={{
-                    padding: "3px 6px",
-                    fontSize: 8,
-                    cursor: "pointer",
-                    fontFamily: "monospace",
-                    letterSpacing: "0.08em",
-                    background:
-                      activeStyle === m
-                        ? "rgba(0,255,255,0.2)"
-                        : "rgba(0,0,0,0.4)",
-                    border: `1px solid ${
-                      activeStyle === m ? "#00ffff" : "rgba(0,255,255,0.15)"
-                    }`,
-                    color:
-                      activeStyle === m
-                        ? STYLE_CONFIGS[m].color
-                        : "rgba(0,255,255,0.4)",
-                  }}
-                >
-                  {m.toUpperCase()}
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* NAVIGATION */}
           <div style={{ marginBottom: 12 }}>
