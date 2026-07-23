@@ -502,6 +502,12 @@ export default function App() {
     return window.innerWidth < 768;
   });
 
+  // Phone/tablet: below this width the sidebars become overlay drawers, so the
+  // globe stays full-size instead of being squeezed to nothing.
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 768,
+  );
+
   // Live feed events
   const [feedEvents, setFeedEvents] = useState<FeedEvent[]>([]);
   const feedIdRef = useRef(0);
@@ -664,6 +670,7 @@ export default function App() {
   // ── Landscape auto-collapse ──
   useEffect(() => {
     const checkOrientation = () => {
+      setIsMobile(window.innerWidth < 768);
       if (window.innerWidth > window.innerHeight && window.innerWidth < 900) {
         setLeftCollapsed(true);
         setRightCollapsed(true);
@@ -771,7 +778,13 @@ export default function App() {
   const globeFilter = [bloomExtra, sharpenExtra].filter(Boolean).join(" ");
   const leftW = leftCollapsed ? 0 : 270;
   const rightW = rightCollapsed ? 0 : 260;
-  const globeSize = `min(calc(100vw - ${leftW}px - ${rightW}px), 90dvh)`;
+  // On phones the sidebars overlay the globe, so the HUD doesn't inset for them
+  // and the globe takes (nearly) the full width.
+  const hudLeft = isMobile ? 0 : leftW;
+  const hudRight = isMobile ? 0 : rightW;
+  const globeSize = isMobile
+    ? "min(96vw, 82dvh)"
+    : `min(calc(100vw - ${leftW}px - ${rightW}px), 90dvh)`;
 
   return (
     <div
@@ -786,6 +799,28 @@ export default function App() {
         fontFamily: font.read,
       }}
     >
+      {/* Mobile drawer backdrop — tap to dismiss the overlay sidebars */}
+      {isMobile && (!leftCollapsed || !rightCollapsed) && (
+        <button
+          type="button"
+          aria-label="Close panel"
+          onClick={() => {
+            setLeftCollapsed(true);
+            setRightCollapsed(true);
+            localStorage.setItem("sentinel_left_collapsed", "true");
+            localStorage.setItem("sentinel_right_collapsed", "true");
+          }}
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 955,
+            border: "none",
+            background: "rgba(2,4,8,0.55)",
+            cursor: "pointer",
+          }}
+        />
+      )}
+
       {/* ── Sidebar Toggle Buttons (outside sidebars so never clipped) ── */}
       <button
         type="button"
@@ -797,11 +832,17 @@ export default function App() {
         }}
         style={{
           position: "absolute",
-          left: leftCollapsed ? 0 : 270,
+          left: isMobile
+            ? leftCollapsed
+              ? 0
+              : "min(86vw, 320px)"
+            : leftCollapsed
+              ? 0
+              : 270,
           top: "50%",
           transform: "translateY(-50%)",
-          width: 20,
-          height: 40,
+          width: isMobile ? 30 : 20,
+          height: isMobile ? 52 : 40,
           background: color.surface1,
           border: `1px solid ${color.hairlineStrong}`,
           borderLeft: "none",
@@ -810,9 +851,9 @@ export default function App() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          zIndex: 950,
+          zIndex: 970,
           color: color.text2,
-          fontSize: 10,
+          fontSize: isMobile ? 14 : 10,
           padding: 0,
           transition: "left 0.3s ease",
         }}
@@ -833,11 +874,17 @@ export default function App() {
         }}
         style={{
           position: "absolute",
-          right: rightCollapsed ? 0 : 260,
+          right: isMobile
+            ? rightCollapsed
+              ? 0
+              : "min(86vw, 320px)"
+            : rightCollapsed
+              ? 0
+              : 260,
           top: "50%",
           transform: "translateY(-50%)",
-          width: 20,
-          height: 40,
+          width: isMobile ? 30 : 20,
+          height: isMobile ? 52 : 40,
           background: color.surface1,
           border: `1px solid ${color.hairlineStrong}`,
           borderRight: "none",
@@ -846,9 +893,9 @@ export default function App() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          zIndex: 950,
+          zIndex: 970,
           color: color.text2,
-          fontSize: 10,
+          fontSize: isMobile ? 14 : 10,
           padding: 0,
           transition: "right 0.3s ease",
         }}
@@ -861,13 +908,22 @@ export default function App() {
       <div
         onPointerDown={(e) => e.stopPropagation()}
         style={{
-          width: leftCollapsed ? 0 : 270,
+          position: isMobile ? "absolute" : "relative",
+          top: 0,
+          bottom: 0,
+          left: 0,
+          width: isMobile ? "min(86vw, 320px)" : leftCollapsed ? 0 : 270,
           background: color.surface1,
           borderRight: leftCollapsed ? "none" : `1px solid ${color.hairline}`,
-          zIndex: 900,
+          boxShadow:
+            isMobile && !leftCollapsed ? "0 0 40px rgba(0,0,0,0.6)" : undefined,
+          zIndex: isMobile ? 960 : 900,
           overflowY: leftCollapsed ? "hidden" : "auto",
           overflowX: "hidden",
-          transition: "width 0.3s ease",
+          transform: isMobile
+            ? `translateX(${leftCollapsed ? "-101%" : "0"})`
+            : undefined,
+          transition: isMobile ? "transform 0.3s ease" : "width 0.3s ease",
           flexShrink: 0,
           pointerEvents: leftCollapsed ? "none" : "auto",
         }}
@@ -1570,8 +1626,8 @@ export default function App() {
             style={{
               position: "absolute",
               top: 4,
-              left: leftCollapsed ? 0 : 270,
-              right: rightCollapsed ? 0 : 260,
+              left: hudLeft,
+              right: hudRight,
               zIndex: 1000,
               color: color.text2,
               fontSize: 9,
@@ -1593,7 +1649,7 @@ export default function App() {
             style={{
               position: "absolute",
               top: 40,
-              left: (leftCollapsed ? 0 : 270) + 8,
+              left: hudLeft + 8,
               zIndex: 800,
               pointerEvents: "none",
               fontFamily: font.data,
@@ -1627,7 +1683,7 @@ export default function App() {
             style={{
               position: "absolute",
               top: 40,
-              right: (rightCollapsed ? 0 : 260) + 8,
+              right: hudRight + 8,
               zIndex: 800,
               pointerEvents: "none",
               fontFamily: font.data,
@@ -1648,7 +1704,7 @@ export default function App() {
             style={{
               position: "absolute",
               bottom: 4,
-              left: (leftCollapsed ? 0 : 270) + 8,
+              left: hudLeft + 8,
               zIndex: 800,
               pointerEvents: "none",
               fontFamily: font.data,
@@ -1668,7 +1724,7 @@ export default function App() {
             style={{
               position: "absolute",
               bottom: 90,
-              right: (rightCollapsed ? 0 : 260) + 8,
+              right: hudRight + 8,
               zIndex: 800,
               pointerEvents: "none",
               fontFamily: font.data,
@@ -1709,13 +1765,24 @@ export default function App() {
       <div
         onPointerDown={(e) => e.stopPropagation()}
         style={{
-          width: rightCollapsed ? 0 : 260,
+          position: isMobile ? "absolute" : "relative",
+          top: 0,
+          bottom: 0,
+          right: 0,
+          width: isMobile ? "min(86vw, 320px)" : rightCollapsed ? 0 : 260,
           background: color.surface1,
           borderLeft: rightCollapsed ? "none" : `1px solid ${color.hairline}`,
-          zIndex: 900,
+          boxShadow:
+            isMobile && !rightCollapsed
+              ? "0 0 40px rgba(0,0,0,0.6)"
+              : undefined,
+          zIndex: isMobile ? 960 : 900,
           overflowY: rightCollapsed ? "hidden" : "auto",
-          overflow: rightCollapsed ? "hidden" : undefined,
-          transition: "width 0.3s ease",
+          overflowX: "hidden",
+          transform: isMobile
+            ? `translateX(${rightCollapsed ? "101%" : "0"})`
+            : undefined,
+          transition: isMobile ? "transform 0.3s ease" : "width 0.3s ease",
           flexShrink: 0,
           pointerEvents: rightCollapsed ? "none" : "auto",
         }}
