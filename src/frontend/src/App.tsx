@@ -30,6 +30,7 @@ import {
   severityLabel,
 } from "./hazards/types";
 import { color, font } from "./theme/tokens";
+import DetailPanel from "./ui/DetailPanel";
 import SeverityBlip from "./ui/SeverityBlip";
 
 // Demo/offline mode: open with `?demo` to render a seeded, globe-wide set of
@@ -411,84 +412,6 @@ const REASON_MARKER: Record<NoticeReason, { glyph: string }> = {
   escalating: { glyph: "⤴" },
   worsening: { glyph: "▲" },
 };
-
-// ─── HUD Detail Panel ────────────────────────────────────────────────────────────
-function DetailPanel({
-  title,
-  accent,
-  rows,
-  onClose,
-}: {
-  title: string;
-  accent: string;
-  rows: Array<[string, string]>;
-  onClose: () => void;
-}) {
-  return (
-    <div
-      style={{
-        background: "rgba(0,0,0,0.92)",
-        border: `1px solid ${accent}55`,
-        padding: "10px 14px",
-        fontFamily: "monospace",
-        fontSize: 9,
-        minWidth: 200,
-        maxWidth: 260,
-        color: accent,
-        boxShadow: `0 0 18px ${accent}22`,
-      }}
-    >
-      <div
-        style={{
-          color: accent,
-          fontSize: 10,
-          fontWeight: 700,
-          letterSpacing: "0.12em",
-          marginBottom: 6,
-          borderBottom: `1px solid ${accent}33`,
-          paddingBottom: 4,
-        }}
-      >
-        {title}
-      </div>
-      {rows.map(([k, v]) => (
-        <div
-          key={k}
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 12,
-            padding: "2px 0",
-            borderBottom: `1px solid ${accent}11`,
-          }}
-        >
-          <span style={{ color: `${accent}99`, whiteSpace: "nowrap" }}>
-            {k}
-          </span>
-          <span style={{ color: accent, textAlign: "right" }}>{v}</span>
-        </div>
-      ))}
-      <button
-        type="button"
-        onClick={onClose}
-        style={{
-          marginTop: 8,
-          padding: "2px 12px",
-          fontSize: 8,
-          background: `${accent}18`,
-          border: `1px solid ${accent}66`,
-          color: accent,
-          cursor: "pointer",
-          fontFamily: "monospace",
-          letterSpacing: "0.1em",
-          width: "100%",
-        }}
-      >
-        CLOSE
-      </button>
-    </div>
-  );
-}
 
 // ─── Main App ───────────────────────────────────────────────────────────────────
 export default function App() {
