@@ -874,25 +874,31 @@ export default function App() {
         {/* SENTINEL title */}
         <div
           style={{
-            padding: "10px 12px 6px",
-            borderBottom: "1px solid rgba(0,255,255,0.1)",
+            padding: "12px 12px 8px",
+            borderBottom: `1px solid ${color.hairline}`,
           }}
         >
           <div
             style={{
-              color: "#00ffff",
-              fontSize: 16,
+              fontFamily: font.display,
+              color: color.text1,
+              fontSize: 20,
               fontWeight: 700,
-              letterSpacing: "0.2em",
+              letterSpacing: "0.28em",
+              textShadow: "0 0 18px rgba(98,230,244,0.35)",
             }}
           >
             SENTINEL
           </div>
           <div
             style={{
-              color: "rgba(0,255,255,0.4)",
-              fontSize: 8,
-              letterSpacing: "0.15em",
+              fontFamily: font.display,
+              color: color.text2,
+              fontSize: 9,
+              fontWeight: 600,
+              letterSpacing: "0.2em",
+              textTransform: "uppercase",
+              marginTop: 3,
             }}
           >
             PLANETARY HAZARD MONITOR
@@ -1542,14 +1548,15 @@ export default function App() {
             opacity: proactiveCue ? 1 : 0,
             transform: proactiveCue ? "translateY(0)" : "translateY(6px)",
             transition: "opacity 0.8s ease, transform 0.8s ease",
-            background: "rgba(0,0,0,0.78)",
-            border: "1px solid rgba(0,255,255,0.35)",
-            boxShadow: "0 0 22px rgba(0,255,255,0.18)",
-            padding: "6px 16px",
-            fontFamily: "monospace",
-            fontSize: 9,
-            letterSpacing: "0.12em",
-            color: "#00ffff",
+            background: "rgba(255,180,84,0.08)",
+            border: "1px solid rgba(255,180,84,0.42)",
+            boxShadow: "0 0 30px rgba(255,180,84,0.16)",
+            padding: "8px 18px",
+            fontFamily: font.display,
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: "0.08em",
+            color: color.amber,
             whiteSpace: "nowrap",
             maxWidth: "80%",
             overflow: "hidden",
