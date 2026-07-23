@@ -46,7 +46,7 @@ cue, and the responsive shell. Open questions Q5/Q7 still carry their defaults.
 | ID | Question | Recorded default | Impact if changed |
 |---|---|---|---|
 | Q5 | Is **light mode** in scope? | **Dark-only v1**, built on tokens so light is a later theme-swap, not a refactor. | Adds a full light palette + toggle to Phase 2 scope. |
-| Q7 | **Deforestation / GEE / weather** scope? | **Remove** the dead deforestation path; keep **GEE + weather as optional context**, not first-class. | If deforestation returns, it needs a real data source and re-earns IA weight. |
+| Q7 | **Deforestation / GEE / weather** scope? | ✅ Deforestation path **removed** (enacted 2026-07-23). GEE + weather **remain optional context**, not first-class. | If deforestation returns, it needs a real data source and re-earns IA weight. |
 
 Lower-priority, proceeding on team judgement unless you object: merge vs. split the
 system-log and notice streams (**default: split** — notices are the product, logs
@@ -76,3 +76,4 @@ the targeting logic); operator-vs-viewer naming (**default: neutral "watch" lang
 | 2026-07-23 | Look-&-feel iterated in a live artifact preview (v0.1→v0.3). Direction confirmed and pushed cinematic; type system locked (D7). Balanced-AA, fully-responsive, dark-only-v1 all reaffirmed. |
 | 2026-07-23 | **Build kickoff (D8).** Foundation committed: 6 embedded faces, `theme/tokens.ts`, rebuilt `index.css` (dead OKLCH tokens + dead classes/animations removed), `ui/SeverityBlip.tsx` + tests, severity ramp reconciled in `types.ts`. CI green: typecheck · lint · test (28) · build. |
 | 2026-07-23 | First integrated slice: the **living legend** — sidebar hazard-layer rows rebuilt onto tokens (Chakra Petch labels, Martian Mono counts, `.pill` toggles) with a per-kind `SeverityBlip` driven by peak severity. CI green. |
+| 2026-07-23 | Cleanup (no orphans): **deforestation path removed end-to-end** (`GlobeView` type/component/prop/render + `App` state/panel/handlers) per Q7; orphaned `GeistMono.woff2` deleted. CI green. |

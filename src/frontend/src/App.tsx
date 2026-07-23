@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import GlobeView, {
-  type DeforestationItem,
   type EqItem,
   type FireItem,
   type HazardMarker,
@@ -549,8 +548,6 @@ export default function App() {
   // Selected items (detail panels rendered OUTSIDE the circular clip)
   const [selectedEq, setSelectedEq] = useState<EqItem | null>(null);
   const [selectedFire, setSelectedFire] = useState<FireItem | null>(null);
-  const [selectedDeforestation, setSelectedDeforestation] =
-    useState<DeforestationItem | null>(null);
   const [selectedHazard, setSelectedHazard] = useState<HazardEvent | null>(
     null,
   );
@@ -1297,7 +1294,6 @@ export default function App() {
             eqData={kindVisible.earthquake ? earthquakes.map(toEqItem) : []}
             weatherData={weatherData}
             fireData={kindVisible.wildfire ? wildfires.map(toFireItem) : []}
-            deforestationData={[]}
             hazardData={otherHazards
               .filter((h) => kindVisible[h.kind])
               .map(toHazardMarker)}
@@ -1307,7 +1303,6 @@ export default function App() {
               earthquakes: kindVisible.earthquake,
               weather: weatherOn,
               fires: kindVisible.wildfire,
-              deforestation: false,
             }}
             globeCenter={mapCenter}
             targetCenter={targetCenter}
@@ -1319,16 +1314,12 @@ export default function App() {
             }}
             onFireClick={(f) => {
               setSelectedFire(f);
-              setSelectedDeforestation(null);
               setSelectedEq(null);
               setSelectedHazard(null);
               addFeed(
                 "FIRE",
                 `Selected wildfire at ${f.lat.toFixed(2)}°, ${f.lng.toFixed(2)}°`,
               );
-            }}
-            onDeforestationClick={(d) => {
-              setSelectedDeforestation(d);
             }}
             onHazardClick={(id) => {
               const h = hazards.find((x) => x.id === id) ?? null;
@@ -1549,46 +1540,6 @@ export default function App() {
                 ["SOURCE", selectedFire.source],
               ]}
               onClose={() => setSelectedFire(null)}
-            />
-          </div>
-        )}
-
-        {/* Deforestation alert panel */}
-        {selectedDeforestation && (
-          <div
-            style={{
-              position: "absolute",
-              bottom: 24,
-              left: "50%",
-              transform: "translateX(-50%)",
-              zIndex: 2000,
-              pointerEvents: "all",
-            }}
-            data-ocid="deforestation.panel"
-          >
-            <DetailPanel
-              title="⚠ DEFORESTATION ALERT"
-              accent="#b5651d"
-              rows={[
-                ["LAT", `${selectedDeforestation.lat.toFixed(4)}°`],
-                ["LNG", `${selectedDeforestation.lng.toFixed(4)}°`],
-                [
-                  "CONFIDENCE",
-                  `${selectedDeforestation.confidence.toFixed(0)}%`,
-                ],
-                [
-                  "ALERT DATE",
-                  selectedDeforestation.alertDate
-                    .replace("T", " ")
-                    .slice(0, 19),
-                ],
-                [
-                  "AREA",
-                  `${selectedDeforestation.areaHectares.toLocaleString()} HA`,
-                ],
-                ["SOURCE", selectedDeforestation.source],
-              ]}
-              onClose={() => setSelectedDeforestation(null)}
             />
           </div>
         )}

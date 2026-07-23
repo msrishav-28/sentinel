@@ -70,8 +70,8 @@ Legend for effort: **S** ≤ half a day · **M** ~1–2 days · **L** multi-day.
 - ☐ **I4** Rebuild the shell responsively (D4); implement the mobile bottom sheet. **L**
 - ☐ **I5** Implement the unified watch panel + unified detail/selection model. **M**
 - ☐ **I6** Add empty/error/skeleton states; add `prefers-reduced-motion` gating. **M**
-- ☐ **I7** Remove dead code: deforestation path, unused `.dark` class + CSS
-  animations (per Q7 default). **S**
+- ☑ **I7** Removed dead code: deforestation path (both files), unused `.dark`
+  class + dead CSS animations (in the `index.css` rebuild), orphan `GeistMono.woff2`.
 - ☐ **I8** Perf pass: memoize derived hazard slices; audit poll-loop re-renders. **M**
 - ☐ **I9** Add component/interaction/a11y tests (currently core-only). **M**
 
