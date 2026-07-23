@@ -78,10 +78,15 @@ Legend for effort: **S** ≤ half a day · **M** ~1–2 days · **L** multi-day.
 - ◐ **I9** Core suite green (28 tests) incl. `SeverityBlip`; broader component/a11y
   tests still to add.
 
-### Remaining polish (optional)
-- ☐ **R1** Live-feed signal/noise split — notices stream vs. demoted system log.
-- ☐ **R2** Explicit "all clear / no active hazards" empty state.
-- ☐ **R3** Per-kind globe-marker hue tuning for contrast on space-black.
+### Polish
+- ☑ **R1** Live-feed **signal/noise split** — a `NOTICE` type separates the
+  "since you last looked" signal (amber, Saira 10px) from a demoted System Log.
+- ☑ **R2** First-class **empty/loading/error** state over the globe: acquiring /
+  all-clear / feeds-unavailable, driven by `hazards.length` + `lastHazardUpdate`.
+- ⊘ **R3** Per-kind marker hue tuning — **skipped by design**: the hues already
+  clear 3:1 non-text contrast on space-black (and render additively), `KIND_META`
+  feeds legend + panels + globe so retuning risks regressing preserved strengths,
+  and it would touch the globe. Not needed; net-negative risk.
 
 ---
 

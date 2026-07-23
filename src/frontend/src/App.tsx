@@ -54,7 +54,7 @@ function defaultKindVisibility(): KindVisibility {
 interface FeedEvent {
   id: string;
   time: string;
-  type: "EQ" | "WEATHER" | "SYSTEM" | "FIRE" | "HAZARD";
+  type: "NOTICE" | "EQ" | "WEATHER" | "SYSTEM" | "FIRE" | "HAZARD";
   message: string;
 }
 
@@ -567,7 +567,7 @@ export default function App() {
       if (surfacedNoticeIdsRef.current.has(key)) continue;
       surfacedNoticeIdsRef.current.add(key);
       addFeed(
-        "HAZARD",
+        "NOTICE",
         `${REASON_MARKER[n.reason].glyph} Since you last looked — ${KIND_META[n.kind].label}: ${n.title}`,
       );
     }
@@ -758,11 +758,12 @@ export default function App() {
   }, []);
 
   const feedTypeColor: Record<FeedEvent["type"], string> = {
+    NOTICE: color.amber,
     EQ: KIND_META.earthquake.color,
     WEATHER: color.teal,
     SYSTEM: color.text3,
     FIRE: KIND_META.wildfire.color,
-    HAZARD: color.amber,
+    HAZARD: color.teal,
   };
 
   // Globe container: always a perfect circle using CSS min()
@@ -785,6 +786,29 @@ export default function App() {
   const globeSize = isMobile
     ? "min(96vw, 82dvh)"
     : `min(calc(100vw - ${leftW}px - ${rightW}px), 90dvh)`;
+
+  // Feed split (principle #1): notices are the product signal; system/weather/
+  // selection lines are demoted to a separate log so the signal never drowns.
+  const feedNotices = feedEvents.filter((e) => e.type === "NOTICE");
+  const feedLog = feedEvents.filter((e) => e.type !== "NOTICE");
+
+  // First-class monitor states for when nothing is on the globe yet.
+  const emptyState =
+    hazards.length > 0
+      ? null
+      : lastHazardUpdate === "never"
+        ? { label: "ACQUIRING HAZARD FEEDS", tone: color.text2, pulse: true }
+        : lastHazardUpdate === "failed"
+          ? {
+              label: "FEEDS UNAVAILABLE · RETRYING",
+              tone: color.danger,
+              pulse: false,
+            }
+          : {
+              label: "ALL CLEAR · NO ACTIVE HAZARDS",
+              tone: color.ok,
+              pulse: false,
+            };
 
   return (
     <div
@@ -1172,7 +1196,7 @@ export default function App() {
           {feedExpanded && (
             <div
               style={{
-                maxHeight: 160,
+                maxHeight: 230,
                 overflowY: "auto",
                 padding: "0 10px 8px",
               }}
@@ -1180,48 +1204,122 @@ export default function App() {
               {feedEvents.length === 0 && (
                 <div
                   style={{
+                    fontFamily: font.data,
                     color: color.text3,
-                    fontSize: 8,
-                    padding: "4px 0",
+                    fontSize: 9,
+                    padding: "6px 2px",
                   }}
                 >
-                  Waiting for data...
+                  {lastHazardUpdate === "never"
+                    ? "Acquiring hazard feeds…"
+                    : "No notices yet — all quiet."}
                 </div>
               )}
-              {feedEvents.map((ev) => (
+
+              {/* NOTICES — the product signal */}
+              {feedNotices.length > 0 && (
+                <div
+                  style={{
+                    fontFamily: font.display,
+                    fontSize: 8,
+                    fontWeight: 600,
+                    letterSpacing: "0.16em",
+                    textTransform: "uppercase",
+                    color: color.amber,
+                    padding: "6px 0 4px",
+                  }}
+                >
+                  Notices · {feedNotices.length}
+                </div>
+              )}
+              {feedNotices.map((ev) => (
                 <div
                   key={ev.id}
                   style={{
                     display: "flex",
-                    gap: 5,
-                    padding: "2px 0",
+                    gap: 7,
+                    padding: "3px 0",
                     borderBottom: `1px solid ${color.hairline}`,
                   }}
                 >
                   <span
                     style={{
+                      fontFamily: font.data,
                       color: color.text3,
-                      fontSize: 6,
+                      fontSize: 8,
                       whiteSpace: "nowrap",
                       paddingTop: 1,
-                      minWidth: 44,
+                      minWidth: 46,
                     }}
                   >
                     {ev.time}
                   </span>
                   <span
                     style={{
+                      fontFamily: font.read,
+                      color: color.text1,
+                      fontSize: 10,
+                      flex: 1,
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    {ev.message}
+                  </span>
+                </div>
+              ))}
+
+              {/* SYSTEM LOG — demoted chatter */}
+              {feedLog.length > 0 && (
+                <div
+                  style={{
+                    fontFamily: font.display,
+                    fontSize: 8,
+                    fontWeight: 600,
+                    letterSpacing: "0.16em",
+                    textTransform: "uppercase",
+                    color: color.text3,
+                    padding: "10px 0 4px",
+                  }}
+                >
+                  System Log
+                </div>
+              )}
+              {feedLog.map((ev) => (
+                <div
+                  key={ev.id}
+                  style={{
+                    display: "flex",
+                    gap: 6,
+                    padding: "2px 0",
+                    opacity: 0.7,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: font.data,
+                      color: color.text3,
+                      fontSize: 8,
+                      whiteSpace: "nowrap",
+                      minWidth: 46,
+                    }}
+                  >
+                    {ev.time}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: font.data,
                       color: feedTypeColor[ev.type],
-                      fontSize: 7,
-                      minWidth: 40,
+                      fontSize: 8,
+                      minWidth: 34,
                     }}
                   >
                     [{ev.type}]
                   </span>
                   <span
                     style={{
+                      fontFamily: font.read,
                       color: color.text2,
-                      fontSize: 7,
+                      fontSize: 9,
                       flex: 1,
                       lineHeight: 1.3,
                     }}
@@ -1453,6 +1551,45 @@ export default function App() {
             </svg>
           </div>
         </div>
+
+        {/* First-class monitor state — loading / all-clear / error */}
+        {emptyState && (
+          <div
+            style={{
+              position: "absolute",
+              top: "38%",
+              left: hudLeft,
+              right: hudRight,
+              zIndex: 650,
+              pointerEvents: "none",
+              display: "flex",
+              justifyContent: "center",
+              transition: "left 0.3s ease, right 0.3s ease",
+            }}
+            data-ocid="globe.empty_state"
+          >
+            <div
+              style={{
+                fontFamily: font.display,
+                fontSize: 13,
+                fontWeight: 700,
+                letterSpacing: "0.2em",
+                textTransform: "uppercase",
+                color: emptyState.tone,
+                textShadow: `0 0 18px ${emptyState.tone}55`,
+                border: `1px solid ${emptyState.tone}44`,
+                borderRadius: 2,
+                padding: "8px 18px",
+                background: "rgba(4,6,12,0.6)",
+                animation: emptyState.pulse
+                  ? "reticle-pulse 2s ease-in-out infinite"
+                  : undefined,
+              }}
+            >
+              {emptyState.label}
+            </div>
+          </div>
+        )}
 
         {/* ── DETAIL PANELS (outside circular clip, at high z-index) ── */}
         {/* Earthquake panel */}
