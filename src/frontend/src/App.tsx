@@ -26,8 +26,12 @@ import {
   type HazardEvent,
   type HazardKind,
   KIND_META,
+  type Severity,
+  severityColor,
   severityLabel,
 } from "./hazards/types";
+import { color, font } from "./theme/tokens";
+import SeverityBlip from "./ui/SeverityBlip";
 
 // Demo/offline mode: open with `?demo` to render a seeded, globe-wide set of
 // hazards without any network — bulletproof for a venue with flaky wifi.
@@ -994,7 +998,13 @@ export default function App() {
           </div>
           {HAZARD_KINDS.map((kind) => {
             const meta = KIND_META[kind];
-            const count = hazards.filter((h) => h.kind === kind).length;
+            const kindHazards = hazards.filter((h) => h.kind === kind);
+            const count = kindHazards.length;
+            // Peak severity currently present for this kind drives the blip.
+            const peak: Severity | 0 =
+              count > 0
+                ? (Math.max(...kindHazards.map((h) => h.severity)) as Severity)
+                : 0;
             const on = kindVisible[kind];
             return (
               <div
@@ -1002,16 +1012,17 @@ export default function App() {
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 6,
-                  padding: "3px 0",
-                  borderBottom: "1px solid rgba(0,255,255,0.04)",
+                  gap: 8,
+                  padding: "4px 0",
+                  borderBottom: `1px solid ${color.hairline}`,
                 }}
               >
                 <span
                   style={{
-                    color: on ? meta.color : "rgba(0,255,255,0.3)",
-                    fontSize: 11,
-                    width: 14,
+                    color: on ? meta.color : color.text3,
+                    fontSize: 13,
+                    width: 16,
+                    textAlign: "center",
                   }}
                 >
                   {meta.glyph}
@@ -1019,8 +1030,12 @@ export default function App() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div
                     style={{
-                      color: on ? "#00ffff" : "rgba(0,255,255,0.3)",
-                      fontSize: 8,
+                      fontFamily: font.display,
+                      fontWeight: 600,
+                      fontSize: 11,
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                      color: on ? color.text1 : color.text3,
                     }}
                   >
                     {meta.label}
@@ -1028,26 +1043,31 @@ export default function App() {
                 </div>
                 <span
                   style={{
-                    color: on ? meta.color : "rgba(0,255,255,0.25)",
-                    fontSize: 8,
-                    minWidth: 24,
+                    fontFamily: font.data,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color:
+                      on && count > 0
+                        ? severityColor(peak as Severity)
+                        : color.text3,
+                    minWidth: 22,
                     textAlign: "right",
                   }}
                 >
                   {count > 0 ? count : "–"}
                 </span>
+                <SeverityBlip severity={peak} active={on} size={22} />
                 <button
                   type="button"
                   data-ocid={`layers.${kind}.toggle`}
+                  data-on={on}
                   onClick={() => toggleKind(kind)}
+                  className="pill"
                   style={{
-                    padding: "2px 5px",
-                    fontSize: 7,
-                    cursor: "pointer",
-                    fontFamily: "monospace",
-                    background: on ? "rgba(0,255,255,0.2)" : "rgba(0,0,0,0.4)",
-                    border: `1px solid ${on ? "#00ffff" : "rgba(0,255,255,0.2)"}`,
-                    color: on ? "#00ffff" : "rgba(0,255,255,0.3)",
+                    fontSize: 9,
+                    minWidth: 38,
+                    minHeight: 22,
+                    padding: "3px 7px",
                   }}
                 >
                   {on ? "ON" : "OFF"}
