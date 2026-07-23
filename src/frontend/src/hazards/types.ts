@@ -148,13 +148,16 @@ export const HAZARD_KINDS: HazardKind[] = [
   "ozone",
 ];
 
-// Severity colour ramp (cyan → amber → red) matching the HUD aesthetic.
+// Severity colour ramp (cool teal → amber → red) — the semantic spine shared by
+// the globe markers, the severity blips, and the noticing feed. Kept here in the
+// portable core so every surface reads the same value. Mirrored by the design
+// tokens (see `theme/tokens.ts`).
 const SEVERITY_COLORS: Record<Severity, string> = {
-  1: "#7fd4d4",
-  2: "#ffd166",
-  3: "#ff9f45",
-  4: "#ff6b35",
-  5: "#ff3b3b",
+  1: "#4fb8c9",
+  2: "#c9cf6a",
+  3: "#ffcf5c",
+  4: "#ff8a3d",
+  5: "#ff4d4d",
 };
 
 const SEVERITY_LABELS: Record<Severity, string> = {

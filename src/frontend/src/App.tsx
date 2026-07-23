@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import GlobeView, {
-  type DeforestationItem,
   type EqItem,
   type FireItem,
   type HazardMarker,
@@ -26,8 +25,13 @@ import {
   type HazardEvent,
   type HazardKind,
   KIND_META,
+  type Severity,
+  severityColor,
   severityLabel,
 } from "./hazards/types";
+import { color, font } from "./theme/tokens";
+import DetailPanel from "./ui/DetailPanel";
+import SeverityBlip from "./ui/SeverityBlip";
 
 // Demo/offline mode: open with `?demo` to render a seeded, globe-wide set of
 // hazards without any network — bulletproof for a venue with flaky wifi.
@@ -50,7 +54,7 @@ function defaultKindVisibility(): KindVisibility {
 interface FeedEvent {
   id: string;
   time: string;
-  type: "EQ" | "WEATHER" | "SYSTEM" | "FIRE" | "HAZARD";
+  type: "NOTICE" | "EQ" | "WEATHER" | "SYSTEM" | "FIRE" | "HAZARD";
   message: string;
 }
 
@@ -359,14 +363,17 @@ function weatherCodeToLabel(code: number): string {
 
 function btnStyle(active: boolean): React.CSSProperties {
   return {
-    padding: "3px 8px",
-    fontSize: 8,
+    padding: "4px 9px",
+    fontSize: 9,
+    fontWeight: 600,
     cursor: "pointer",
-    fontFamily: "monospace",
-    letterSpacing: "0.08em",
-    background: active ? "rgba(0,255,255,0.15)" : "rgba(0,0,0,0.4)",
-    border: `1px solid ${active ? "#00ffff" : "rgba(0,255,255,0.2)"}`,
-    color: active ? "#00ffff" : "rgba(0,255,255,0.3)",
+    fontFamily: font.display,
+    letterSpacing: "0.1em",
+    textTransform: "uppercase",
+    borderRadius: 2,
+    background: active ? "rgba(63,184,207,0.18)" : "transparent",
+    border: `1px solid ${active ? color.teal : color.hairlineStrong}`,
+    color: active ? color.cyan : color.text3,
   };
 }
 
@@ -408,84 +415,6 @@ const REASON_MARKER: Record<NoticeReason, { glyph: string }> = {
   escalating: { glyph: "⤴" },
   worsening: { glyph: "▲" },
 };
-
-// ─── HUD Detail Panel ────────────────────────────────────────────────────────────
-function DetailPanel({
-  title,
-  accent,
-  rows,
-  onClose,
-}: {
-  title: string;
-  accent: string;
-  rows: Array<[string, string]>;
-  onClose: () => void;
-}) {
-  return (
-    <div
-      style={{
-        background: "rgba(0,0,0,0.92)",
-        border: `1px solid ${accent}55`,
-        padding: "10px 14px",
-        fontFamily: "monospace",
-        fontSize: 9,
-        minWidth: 200,
-        maxWidth: 260,
-        color: accent,
-        boxShadow: `0 0 18px ${accent}22`,
-      }}
-    >
-      <div
-        style={{
-          color: accent,
-          fontSize: 10,
-          fontWeight: 700,
-          letterSpacing: "0.12em",
-          marginBottom: 6,
-          borderBottom: `1px solid ${accent}33`,
-          paddingBottom: 4,
-        }}
-      >
-        {title}
-      </div>
-      {rows.map(([k, v]) => (
-        <div
-          key={k}
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 12,
-            padding: "2px 0",
-            borderBottom: `1px solid ${accent}11`,
-          }}
-        >
-          <span style={{ color: `${accent}99`, whiteSpace: "nowrap" }}>
-            {k}
-          </span>
-          <span style={{ color: accent, textAlign: "right" }}>{v}</span>
-        </div>
-      ))}
-      <button
-        type="button"
-        onClick={onClose}
-        style={{
-          marginTop: 8,
-          padding: "2px 12px",
-          fontSize: 8,
-          background: `${accent}18`,
-          border: `1px solid ${accent}66`,
-          color: accent,
-          cursor: "pointer",
-          fontFamily: "monospace",
-          letterSpacing: "0.1em",
-          width: "100%",
-        }}
-      >
-        CLOSE
-      </button>
-    </div>
-  );
-}
 
 // ─── Main App ───────────────────────────────────────────────────────────────────
 export default function App() {
@@ -545,8 +474,6 @@ export default function App() {
   // Selected items (detail panels rendered OUTSIDE the circular clip)
   const [selectedEq, setSelectedEq] = useState<EqItem | null>(null);
   const [selectedFire, setSelectedFire] = useState<FireItem | null>(null);
-  const [selectedDeforestation, setSelectedDeforestation] =
-    useState<DeforestationItem | null>(null);
   const [selectedHazard, setSelectedHazard] = useState<HazardEvent | null>(
     null,
   );
@@ -574,6 +501,12 @@ export default function App() {
     if (saved !== null) return JSON.parse(saved) as boolean;
     return window.innerWidth < 768;
   });
+
+  // Phone/tablet: below this width the sidebars become overlay drawers, so the
+  // globe stays full-size instead of being squeezed to nothing.
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 768,
+  );
 
   // Live feed events
   const [feedEvents, setFeedEvents] = useState<FeedEvent[]>([]);
@@ -634,7 +567,7 @@ export default function App() {
       if (surfacedNoticeIdsRef.current.has(key)) continue;
       surfacedNoticeIdsRef.current.add(key);
       addFeed(
-        "HAZARD",
+        "NOTICE",
         `${REASON_MARKER[n.reason].glyph} Since you last looked — ${KIND_META[n.kind].label}: ${n.title}`,
       );
     }
@@ -737,6 +670,7 @@ export default function App() {
   // ── Landscape auto-collapse ──
   useEffect(() => {
     const checkOrientation = () => {
+      setIsMobile(window.innerWidth < 768);
       if (window.innerWidth > window.innerHeight && window.innerWidth < 900) {
         setLeftCollapsed(true);
         setRightCollapsed(true);
@@ -824,11 +758,12 @@ export default function App() {
   }, []);
 
   const feedTypeColor: Record<FeedEvent["type"], string> = {
-    EQ: "#ff4400",
-    WEATHER: "#aaddff",
-    SYSTEM: "rgba(0,255,255,0.4)",
-    FIRE: "#ff5a1f",
-    HAZARD: "#ffaa33",
+    NOTICE: color.amber,
+    EQ: KIND_META.earthquake.color,
+    WEATHER: color.teal,
+    SYSTEM: color.text3,
+    FIRE: KIND_META.wildfire.color,
+    HAZARD: color.teal,
   };
 
   // Globe container: always a perfect circle using CSS min()
@@ -844,21 +779,72 @@ export default function App() {
   const globeFilter = [bloomExtra, sharpenExtra].filter(Boolean).join(" ");
   const leftW = leftCollapsed ? 0 : 270;
   const rightW = rightCollapsed ? 0 : 260;
-  const globeSize = `min(calc(100vw - ${leftW}px - ${rightW}px), 90dvh)`;
+  // On phones the sidebars overlay the globe, so the HUD doesn't inset for them
+  // and the globe takes (nearly) the full width.
+  const hudLeft = isMobile ? 0 : leftW;
+  const hudRight = isMobile ? 0 : rightW;
+  const globeSize = isMobile
+    ? "min(96vw, 82dvh)"
+    : `min(calc(100vw - ${leftW}px - ${rightW}px), 90dvh)`;
+
+  // Feed split (principle #1): notices are the product signal; system/weather/
+  // selection lines are demoted to a separate log so the signal never drowns.
+  const feedNotices = feedEvents.filter((e) => e.type === "NOTICE");
+  const feedLog = feedEvents.filter((e) => e.type !== "NOTICE");
+
+  // First-class monitor states for when nothing is on the globe yet.
+  const emptyState =
+    hazards.length > 0
+      ? null
+      : lastHazardUpdate === "never"
+        ? { label: "ACQUIRING HAZARD FEEDS", tone: color.text2, pulse: true }
+        : lastHazardUpdate === "failed"
+          ? {
+              label: "FEEDS UNAVAILABLE · RETRYING",
+              tone: color.danger,
+              pulse: false,
+            }
+          : {
+              label: "ALL CLEAR · NO ACTIVE HAZARDS",
+              tone: color.ok,
+              pulse: false,
+            };
 
   return (
     <div
       style={{
         width: "100vw",
         height: "100dvh",
-        background: "#000",
+        background: color.ground,
         overflow: "hidden",
         position: "relative",
         display: "flex",
         flexDirection: "row",
-        fontFamily: "'JetBrains Mono', monospace",
+        fontFamily: font.read,
       }}
     >
+      {/* Mobile drawer backdrop — tap to dismiss the overlay sidebars */}
+      {isMobile && (!leftCollapsed || !rightCollapsed) && (
+        <button
+          type="button"
+          aria-label="Close panel"
+          onClick={() => {
+            setLeftCollapsed(true);
+            setRightCollapsed(true);
+            localStorage.setItem("sentinel_left_collapsed", "true");
+            localStorage.setItem("sentinel_right_collapsed", "true");
+          }}
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 955,
+            border: "none",
+            background: "rgba(2,4,8,0.55)",
+            cursor: "pointer",
+          }}
+        />
+      )}
+
       {/* ── Sidebar Toggle Buttons (outside sidebars so never clipped) ── */}
       <button
         type="button"
@@ -870,22 +856,28 @@ export default function App() {
         }}
         style={{
           position: "absolute",
-          left: leftCollapsed ? 0 : 270,
+          left: isMobile
+            ? leftCollapsed
+              ? 0
+              : "min(86vw, 320px)"
+            : leftCollapsed
+              ? 0
+              : 270,
           top: "50%",
           transform: "translateY(-50%)",
-          width: 20,
-          height: 40,
-          background: "rgba(0,0,0,0.88)",
-          border: "1px solid rgba(0,255,255,0.2)",
+          width: isMobile ? 30 : 20,
+          height: isMobile ? 52 : 40,
+          background: color.surface1,
+          border: `1px solid ${color.hairlineStrong}`,
           borderLeft: "none",
           borderRadius: "0 4px 4px 0",
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          zIndex: 950,
-          color: "rgba(0,255,255,0.7)",
-          fontSize: 10,
+          zIndex: 970,
+          color: color.text2,
+          fontSize: isMobile ? 14 : 10,
           padding: 0,
           transition: "left 0.3s ease",
         }}
@@ -906,22 +898,28 @@ export default function App() {
         }}
         style={{
           position: "absolute",
-          right: rightCollapsed ? 0 : 260,
+          right: isMobile
+            ? rightCollapsed
+              ? 0
+              : "min(86vw, 320px)"
+            : rightCollapsed
+              ? 0
+              : 260,
           top: "50%",
           transform: "translateY(-50%)",
-          width: 20,
-          height: 40,
-          background: "rgba(0,0,0,0.88)",
-          border: "1px solid rgba(0,255,255,0.2)",
+          width: isMobile ? 30 : 20,
+          height: isMobile ? 52 : 40,
+          background: color.surface1,
+          border: `1px solid ${color.hairlineStrong}`,
           borderRight: "none",
           borderRadius: "4px 0 0 4px",
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          zIndex: 950,
-          color: "rgba(0,255,255,0.7)",
-          fontSize: 10,
+          zIndex: 970,
+          color: color.text2,
+          fontSize: isMobile ? 14 : 10,
           padding: 0,
           transition: "right 0.3s ease",
         }}
@@ -934,15 +932,22 @@ export default function App() {
       <div
         onPointerDown={(e) => e.stopPropagation()}
         style={{
-          width: leftCollapsed ? 0 : 270,
-          background: "rgba(0,0,0,0.88)",
-          borderRight: leftCollapsed
-            ? "none"
-            : "1px solid rgba(0,255,255,0.12)",
-          zIndex: 900,
+          position: isMobile ? "absolute" : "relative",
+          top: 0,
+          bottom: 0,
+          left: 0,
+          width: isMobile ? "min(86vw, 320px)" : leftCollapsed ? 0 : 270,
+          background: color.surface1,
+          borderRight: leftCollapsed ? "none" : `1px solid ${color.hairline}`,
+          boxShadow:
+            isMobile && !leftCollapsed ? "0 0 40px rgba(0,0,0,0.6)" : undefined,
+          zIndex: isMobile ? 960 : 900,
           overflowY: leftCollapsed ? "hidden" : "auto",
           overflowX: "hidden",
-          transition: "width 0.3s ease",
+          transform: isMobile
+            ? `translateX(${leftCollapsed ? "-101%" : "0"})`
+            : undefined,
+          transition: isMobile ? "transform 0.3s ease" : "width 0.3s ease",
           flexShrink: 0,
           pointerEvents: leftCollapsed ? "none" : "auto",
         }}
@@ -950,25 +955,31 @@ export default function App() {
         {/* SENTINEL title */}
         <div
           style={{
-            padding: "10px 12px 6px",
-            borderBottom: "1px solid rgba(0,255,255,0.1)",
+            padding: "12px 12px 8px",
+            borderBottom: `1px solid ${color.hairline}`,
           }}
         >
           <div
             style={{
-              color: "#00ffff",
-              fontSize: 16,
+              fontFamily: font.display,
+              color: color.text1,
+              fontSize: 20,
               fontWeight: 700,
-              letterSpacing: "0.2em",
+              letterSpacing: "0.28em",
+              textShadow: "0 0 18px rgba(98,230,244,0.35)",
             }}
           >
             SENTINEL
           </div>
           <div
             style={{
-              color: "rgba(0,255,255,0.4)",
-              fontSize: 8,
-              letterSpacing: "0.15em",
+              fontFamily: font.display,
+              color: color.text2,
+              fontSize: 9,
+              fontWeight: 600,
+              letterSpacing: "0.2em",
+              textTransform: "uppercase",
+              marginTop: 3,
             }}
           >
             PLANETARY HAZARD MONITOR
@@ -979,12 +990,12 @@ export default function App() {
         <div
           style={{
             padding: "6px 12px 10px",
-            borderBottom: "1px solid rgba(0,255,255,0.08)",
+            borderBottom: `1px solid ${color.hairline}`,
           }}
         >
           <div
             style={{
-              color: "rgba(0,255,255,0.5)",
+              color: color.text2,
               fontSize: 8,
               letterSpacing: "0.15em",
               marginBottom: 6,
@@ -994,7 +1005,13 @@ export default function App() {
           </div>
           {HAZARD_KINDS.map((kind) => {
             const meta = KIND_META[kind];
-            const count = hazards.filter((h) => h.kind === kind).length;
+            const kindHazards = hazards.filter((h) => h.kind === kind);
+            const count = kindHazards.length;
+            // Peak severity currently present for this kind drives the blip.
+            const peak: Severity | 0 =
+              count > 0
+                ? (Math.max(...kindHazards.map((h) => h.severity)) as Severity)
+                : 0;
             const on = kindVisible[kind];
             return (
               <div
@@ -1002,16 +1019,17 @@ export default function App() {
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 6,
-                  padding: "3px 0",
-                  borderBottom: "1px solid rgba(0,255,255,0.04)",
+                  gap: 8,
+                  padding: "4px 0",
+                  borderBottom: `1px solid ${color.hairline}`,
                 }}
               >
                 <span
                   style={{
-                    color: on ? meta.color : "rgba(0,255,255,0.3)",
-                    fontSize: 11,
-                    width: 14,
+                    color: on ? meta.color : color.text3,
+                    fontSize: 13,
+                    width: 16,
+                    textAlign: "center",
                   }}
                 >
                   {meta.glyph}
@@ -1019,8 +1037,12 @@ export default function App() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div
                     style={{
-                      color: on ? "#00ffff" : "rgba(0,255,255,0.3)",
-                      fontSize: 8,
+                      fontFamily: font.display,
+                      fontWeight: 600,
+                      fontSize: 11,
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                      color: on ? color.text1 : color.text3,
                     }}
                   >
                     {meta.label}
@@ -1028,26 +1050,31 @@ export default function App() {
                 </div>
                 <span
                   style={{
-                    color: on ? meta.color : "rgba(0,255,255,0.25)",
-                    fontSize: 8,
-                    minWidth: 24,
+                    fontFamily: font.data,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color:
+                      on && count > 0
+                        ? severityColor(peak as Severity)
+                        : color.text3,
+                    minWidth: 22,
                     textAlign: "right",
                   }}
                 >
                   {count > 0 ? count : "–"}
                 </span>
+                <SeverityBlip severity={peak} active={on} size={22} />
                 <button
                   type="button"
                   data-ocid={`layers.${kind}.toggle`}
+                  data-on={on}
                   onClick={() => toggleKind(kind)}
+                  className="pill"
                   style={{
-                    padding: "2px 5px",
-                    fontSize: 7,
-                    cursor: "pointer",
-                    fontFamily: "monospace",
-                    background: on ? "rgba(0,255,255,0.2)" : "rgba(0,0,0,0.4)",
-                    border: `1px solid ${on ? "#00ffff" : "rgba(0,255,255,0.2)"}`,
-                    color: on ? "#00ffff" : "rgba(0,255,255,0.3)",
+                    fontSize: 9,
+                    minWidth: 38,
+                    minHeight: 22,
+                    padding: "3px 7px",
                   }}
                 >
                   {on ? "ON" : "OFF"}
@@ -1063,13 +1090,13 @@ export default function App() {
               alignItems: "center",
               gap: 6,
               padding: "3px 0",
-              borderTop: "1px solid rgba(0,255,255,0.08)",
+              borderTop: `1px solid ${color.hairline}`,
               marginTop: 4,
             }}
           >
             <span
               style={{
-                color: weatherOn ? "#aaddff" : "rgba(0,255,255,0.3)",
+                color: weatherOn ? color.teal : color.text3,
                 fontSize: 11,
                 width: 14,
               }}
@@ -1079,19 +1106,19 @@ export default function App() {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
                 style={{
-                  color: weatherOn ? "#00ffff" : "rgba(0,255,255,0.3)",
+                  color: weatherOn ? color.teal : color.text3,
                   fontSize: 8,
                 }}
               >
                 WEATHER
               </div>
-              <div style={{ color: "rgba(0,255,255,0.3)", fontSize: 7 }}>
+              <div style={{ color: color.text3, fontSize: 7 }}>
                 UPD: {lastWeatherUpdate}
               </div>
             </div>
             <span
               style={{
-                color: weatherOn ? "#aaddff" : "rgba(0,255,255,0.25)",
+                color: weatherOn ? color.teal : color.text3,
                 fontSize: 8,
                 minWidth: 24,
                 textAlign: "right",
@@ -1111,12 +1138,10 @@ export default function App() {
                 padding: "2px 5px",
                 fontSize: 7,
                 cursor: "pointer",
-                fontFamily: "monospace",
-                background: weatherOn
-                  ? "rgba(0,255,255,0.2)"
-                  : "rgba(0,0,0,0.4)",
-                border: `1px solid ${weatherOn ? "#00ffff" : "rgba(0,255,255,0.2)"}`,
-                color: weatherOn ? "#00ffff" : "rgba(0,255,255,0.3)",
+                fontFamily: font.data,
+                background: weatherOn ? color.hairlineStrong : "transparent",
+                border: `1px solid ${weatherOn ? color.teal : color.hairlineStrong}`,
+                color: weatherOn ? color.teal : color.text3,
               }}
             >
               {weatherOn ? "ON" : "OFF"}
@@ -1128,12 +1153,12 @@ export default function App() {
             style={{
               marginTop: 6,
               fontSize: 7,
-              color: "rgba(0,255,255,0.4)",
+              color: color.text3,
               letterSpacing: "0.06em",
             }}
           >
             {DEMO_MODE ? (
-              <span style={{ color: "#ffaa33" }}>◆ DEMO DATA</span>
+              <span style={{ color: color.amber }}>◆ DEMO DATA</span>
             ) : (
               <>
                 SRC USGS {sourceOk.USGS ? "●" : "○"} · EONET{" "}
@@ -1145,7 +1170,7 @@ export default function App() {
         </div>
 
         {/* LIVE FEED */}
-        <div style={{ borderBottom: "1px solid rgba(0,255,255,0.08)" }}>
+        <div style={{ borderBottom: `1px solid ${color.hairline}` }}>
           <button
             type="button"
             onClick={() => setFeedExpanded((e) => !e)}
@@ -1158,20 +1183,20 @@ export default function App() {
               background: "none",
               border: "none",
               cursor: "pointer",
-              color: "rgba(0,255,255,0.7)",
+              color: color.text2,
               fontSize: 9,
               letterSpacing: "0.12em",
             }}
           >
             <span>▶ LIVE FEED</span>
-            <span style={{ color: "#ff3333", fontSize: 7 }}>
+            <span style={{ color: color.danger, fontSize: 7 }}>
               ● {feedExpanded ? "−" : "+"}
             </span>
           </button>
           {feedExpanded && (
             <div
               style={{
-                maxHeight: 160,
+                maxHeight: 230,
                 overflowY: "auto",
                 padding: "0 10px 8px",
               }}
@@ -1179,48 +1204,122 @@ export default function App() {
               {feedEvents.length === 0 && (
                 <div
                   style={{
-                    color: "rgba(0,255,255,0.3)",
-                    fontSize: 8,
-                    padding: "4px 0",
+                    fontFamily: font.data,
+                    color: color.text3,
+                    fontSize: 9,
+                    padding: "6px 2px",
                   }}
                 >
-                  Waiting for data...
+                  {lastHazardUpdate === "never"
+                    ? "Acquiring hazard feeds…"
+                    : "No notices yet — all quiet."}
                 </div>
               )}
-              {feedEvents.map((ev) => (
+
+              {/* NOTICES — the product signal */}
+              {feedNotices.length > 0 && (
+                <div
+                  style={{
+                    fontFamily: font.display,
+                    fontSize: 8,
+                    fontWeight: 600,
+                    letterSpacing: "0.16em",
+                    textTransform: "uppercase",
+                    color: color.amber,
+                    padding: "6px 0 4px",
+                  }}
+                >
+                  Notices · {feedNotices.length}
+                </div>
+              )}
+              {feedNotices.map((ev) => (
                 <div
                   key={ev.id}
                   style={{
                     display: "flex",
-                    gap: 5,
-                    padding: "2px 0",
-                    borderBottom: "1px solid rgba(0,255,255,0.04)",
+                    gap: 7,
+                    padding: "3px 0",
+                    borderBottom: `1px solid ${color.hairline}`,
                   }}
                 >
                   <span
                     style={{
-                      color: "rgba(0,255,255,0.3)",
-                      fontSize: 6,
+                      fontFamily: font.data,
+                      color: color.text3,
+                      fontSize: 8,
                       whiteSpace: "nowrap",
                       paddingTop: 1,
-                      minWidth: 44,
+                      minWidth: 46,
                     }}
                   >
                     {ev.time}
                   </span>
                   <span
                     style={{
+                      fontFamily: font.read,
+                      color: color.text1,
+                      fontSize: 10,
+                      flex: 1,
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    {ev.message}
+                  </span>
+                </div>
+              ))}
+
+              {/* SYSTEM LOG — demoted chatter */}
+              {feedLog.length > 0 && (
+                <div
+                  style={{
+                    fontFamily: font.display,
+                    fontSize: 8,
+                    fontWeight: 600,
+                    letterSpacing: "0.16em",
+                    textTransform: "uppercase",
+                    color: color.text3,
+                    padding: "10px 0 4px",
+                  }}
+                >
+                  System Log
+                </div>
+              )}
+              {feedLog.map((ev) => (
+                <div
+                  key={ev.id}
+                  style={{
+                    display: "flex",
+                    gap: 6,
+                    padding: "2px 0",
+                    opacity: 0.7,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: font.data,
+                      color: color.text3,
+                      fontSize: 8,
+                      whiteSpace: "nowrap",
+                      minWidth: 46,
+                    }}
+                  >
+                    {ev.time}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: font.data,
                       color: feedTypeColor[ev.type],
-                      fontSize: 7,
-                      minWidth: 40,
+                      fontSize: 8,
+                      minWidth: 34,
                     }}
                   >
                     [{ev.type}]
                   </span>
                   <span
                     style={{
-                      color: "rgba(0,255,255,0.7)",
-                      fontSize: 7,
+                      fontFamily: font.read,
+                      color: color.text2,
+                      fontSize: 9,
                       flex: 1,
                       lineHeight: 1.3,
                     }}
@@ -1237,7 +1336,7 @@ export default function App() {
         <div
           style={{
             padding: "6px 12px",
-            color: "rgba(0,255,255,0.2)",
+            color: color.hairlineStrong,
             fontSize: 7,
             lineHeight: 1.5,
           }}
@@ -1277,7 +1376,6 @@ export default function App() {
             eqData={kindVisible.earthquake ? earthquakes.map(toEqItem) : []}
             weatherData={weatherData}
             fireData={kindVisible.wildfire ? wildfires.map(toFireItem) : []}
-            deforestationData={[]}
             hazardData={otherHazards
               .filter((h) => kindVisible[h.kind])
               .map(toHazardMarker)}
@@ -1287,7 +1385,6 @@ export default function App() {
               earthquakes: kindVisible.earthquake,
               weather: weatherOn,
               fires: kindVisible.wildfire,
-              deforestation: false,
             }}
             globeCenter={mapCenter}
             targetCenter={targetCenter}
@@ -1299,16 +1396,12 @@ export default function App() {
             }}
             onFireClick={(f) => {
               setSelectedFire(f);
-              setSelectedDeforestation(null);
               setSelectedEq(null);
               setSelectedHazard(null);
               addFeed(
                 "FIRE",
                 `Selected wildfire at ${f.lat.toFixed(2)}°, ${f.lng.toFixed(2)}°`,
               );
-            }}
-            onDeforestationClick={(d) => {
-              setSelectedDeforestation(d);
             }}
             onHazardClick={(id) => {
               const h = hazards.find((x) => x.id === id) ?? null;
@@ -1350,7 +1443,7 @@ export default function App() {
               {/* Top-left bracket */}
               <path
                 d="M4 16 L4 4 L16 4"
-                stroke="rgba(0,255,255,0.75)"
+                stroke={color.cyan}
                 strokeWidth="1.2"
                 fill="none"
                 strokeLinecap="square"
@@ -1358,7 +1451,7 @@ export default function App() {
               {/* Top-right bracket */}
               <path
                 d="M44 4 L56 4 L56 16"
-                stroke="rgba(0,255,255,0.75)"
+                stroke={color.cyan}
                 strokeWidth="1.2"
                 fill="none"
                 strokeLinecap="square"
@@ -1366,7 +1459,7 @@ export default function App() {
               {/* Bottom-left bracket */}
               <path
                 d="M4 44 L4 56 L16 56"
-                stroke="rgba(0,255,255,0.75)"
+                stroke={color.cyan}
                 strokeWidth="1.2"
                 fill="none"
                 strokeLinecap="square"
@@ -1374,7 +1467,7 @@ export default function App() {
               {/* Bottom-right bracket */}
               <path
                 d="M56 44 L56 56 L44 56"
-                stroke="rgba(0,255,255,0.75)"
+                stroke={color.cyan}
                 strokeWidth="1.2"
                 fill="none"
                 strokeLinecap="square"
@@ -1385,7 +1478,7 @@ export default function App() {
                 y1="26"
                 x2="30"
                 y2="22"
-                stroke="rgba(0,255,255,0.9)"
+                stroke={color.cyan}
                 strokeWidth="1"
                 strokeLinecap="square"
               />
@@ -1394,7 +1487,7 @@ export default function App() {
                 y1="34"
                 x2="30"
                 y2="38"
-                stroke="rgba(0,255,255,0.9)"
+                stroke={color.cyan}
                 strokeWidth="1"
                 strokeLinecap="square"
               />
@@ -1403,7 +1496,7 @@ export default function App() {
                 y1="30"
                 x2="22"
                 y2="30"
-                stroke="rgba(0,255,255,0.9)"
+                stroke={color.cyan}
                 strokeWidth="1"
                 strokeLinecap="square"
               />
@@ -1412,25 +1505,19 @@ export default function App() {
                 y1="30"
                 x2="38"
                 y2="30"
-                stroke="rgba(0,255,255,0.9)"
+                stroke={color.cyan}
                 strokeWidth="1"
                 strokeLinecap="square"
               />
               {/* Center dot */}
-              <rect
-                x="29"
-                y="29"
-                width="2"
-                height="2"
-                fill="rgba(0,255,255,0.95)"
-              />
+              <rect x="29" y="29" width="2" height="2" fill={color.cyan} />
               {/* Mid-side tick marks */}
               <line
                 x1="30"
                 y1="10"
                 x2="30"
                 y2="14"
-                stroke="rgba(0,255,255,0.45)"
+                stroke={color.teal}
                 strokeWidth="0.8"
                 strokeLinecap="square"
               />
@@ -1439,7 +1526,7 @@ export default function App() {
                 y1="46"
                 x2="30"
                 y2="50"
-                stroke="rgba(0,255,255,0.45)"
+                stroke={color.teal}
                 strokeWidth="0.8"
                 strokeLinecap="square"
               />
@@ -1448,7 +1535,7 @@ export default function App() {
                 y1="30"
                 x2="14"
                 y2="30"
-                stroke="rgba(0,255,255,0.45)"
+                stroke={color.teal}
                 strokeWidth="0.8"
                 strokeLinecap="square"
               />
@@ -1457,13 +1544,52 @@ export default function App() {
                 y1="30"
                 x2="50"
                 y2="30"
-                stroke="rgba(0,255,255,0.45)"
+                stroke={color.teal}
                 strokeWidth="0.8"
                 strokeLinecap="square"
               />
             </svg>
           </div>
         </div>
+
+        {/* First-class monitor state — loading / all-clear / error */}
+        {emptyState && (
+          <div
+            style={{
+              position: "absolute",
+              top: "38%",
+              left: hudLeft,
+              right: hudRight,
+              zIndex: 650,
+              pointerEvents: "none",
+              display: "flex",
+              justifyContent: "center",
+              transition: "left 0.3s ease, right 0.3s ease",
+            }}
+            data-ocid="globe.empty_state"
+          >
+            <div
+              style={{
+                fontFamily: font.display,
+                fontSize: 13,
+                fontWeight: 700,
+                letterSpacing: "0.2em",
+                textTransform: "uppercase",
+                color: emptyState.tone,
+                textShadow: `0 0 18px ${emptyState.tone}55`,
+                border: `1px solid ${emptyState.tone}44`,
+                borderRadius: 2,
+                padding: "8px 18px",
+                background: "rgba(4,6,12,0.6)",
+                animation: emptyState.pulse
+                  ? "reticle-pulse 2s ease-in-out infinite"
+                  : undefined,
+              }}
+            >
+              {emptyState.label}
+            </div>
+          </div>
+        )}
 
         {/* ── DETAIL PANELS (outside circular clip, at high z-index) ── */}
         {/* Earthquake panel */}
@@ -1481,7 +1607,9 @@ export default function App() {
           >
             <DetailPanel
               title="⚡ SEISMIC EVENT"
-              accent={selectedEq.mag >= 5 ? "#ff3300" : "#ff6600"}
+              accent={
+                selectedEq.mag >= 5 ? color.danger : KIND_META.earthquake.color
+              }
               rows={[
                 ["MAGNITUDE", `M${selectedEq.mag.toFixed(1)}`],
                 ["LOCATION", selectedEq.place.slice(0, 32)],
@@ -1516,7 +1644,7 @@ export default function App() {
           >
             <DetailPanel
               title="🔥 FIRE DETECTION"
-              accent="#ff5a1f"
+              accent={KIND_META.wildfire.color}
               rows={[
                 ["LAT", `${selectedFire.lat.toFixed(4)}°`],
                 ["LNG", `${selectedFire.lng.toFixed(4)}°`],
@@ -1529,46 +1657,6 @@ export default function App() {
                 ["SOURCE", selectedFire.source],
               ]}
               onClose={() => setSelectedFire(null)}
-            />
-          </div>
-        )}
-
-        {/* Deforestation alert panel */}
-        {selectedDeforestation && (
-          <div
-            style={{
-              position: "absolute",
-              bottom: 24,
-              left: "50%",
-              transform: "translateX(-50%)",
-              zIndex: 2000,
-              pointerEvents: "all",
-            }}
-            data-ocid="deforestation.panel"
-          >
-            <DetailPanel
-              title="⚠ DEFORESTATION ALERT"
-              accent="#b5651d"
-              rows={[
-                ["LAT", `${selectedDeforestation.lat.toFixed(4)}°`],
-                ["LNG", `${selectedDeforestation.lng.toFixed(4)}°`],
-                [
-                  "CONFIDENCE",
-                  `${selectedDeforestation.confidence.toFixed(0)}%`,
-                ],
-                [
-                  "ALERT DATE",
-                  selectedDeforestation.alertDate
-                    .replace("T", " ")
-                    .slice(0, 19),
-                ],
-                [
-                  "AREA",
-                  `${selectedDeforestation.areaHectares.toLocaleString()} HA`,
-                ],
-                ["SOURCE", selectedDeforestation.source],
-              ]}
-              onClose={() => setSelectedDeforestation(null)}
             />
           </div>
         )}
@@ -1648,14 +1736,15 @@ export default function App() {
             opacity: proactiveCue ? 1 : 0,
             transform: proactiveCue ? "translateY(0)" : "translateY(6px)",
             transition: "opacity 0.8s ease, transform 0.8s ease",
-            background: "rgba(0,0,0,0.78)",
-            border: "1px solid rgba(0,255,255,0.35)",
-            boxShadow: "0 0 22px rgba(0,255,255,0.18)",
-            padding: "6px 16px",
-            fontFamily: "monospace",
-            fontSize: 9,
-            letterSpacing: "0.12em",
-            color: "#00ffff",
+            background: "rgba(255,180,84,0.08)",
+            border: "1px solid rgba(255,180,84,0.42)",
+            boxShadow: "0 0 30px rgba(255,180,84,0.16)",
+            padding: "8px 18px",
+            fontFamily: font.display,
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: "0.08em",
+            color: color.amber,
             whiteSpace: "nowrap",
             maxWidth: "80%",
             overflow: "hidden",
@@ -1674,12 +1763,12 @@ export default function App() {
             style={{
               position: "absolute",
               top: 4,
-              left: leftCollapsed ? 0 : 270,
-              right: rightCollapsed ? 0 : 260,
+              left: hudLeft,
+              right: hudRight,
               zIndex: 1000,
-              color: "#ff6600",
+              color: color.text2,
               fontSize: 9,
-              fontFamily: "monospace",
+              fontFamily: font.data,
               letterSpacing: "0.08em",
               whiteSpace: "nowrap",
               pointerEvents: "none",
@@ -1697,16 +1786,16 @@ export default function App() {
             style={{
               position: "absolute",
               top: 40,
-              left: (leftCollapsed ? 0 : 270) + 8,
+              left: hudLeft + 8,
               zIndex: 800,
               pointerEvents: "none",
-              fontFamily: "monospace",
+              fontFamily: font.data,
               transition: "left 0.3s ease",
             }}
           >
             <div
               style={{
-                color: "#00ffff",
+                color: color.teal,
                 fontSize: 10,
                 marginTop: 2,
                 letterSpacing: "0.15em",
@@ -1716,7 +1805,7 @@ export default function App() {
             </div>
             <div
               style={{
-                color: "rgba(0,255,255,0.7)",
+                color: color.text2,
                 fontSize: 8,
                 marginTop: 1,
               }}
@@ -1731,18 +1820,18 @@ export default function App() {
             style={{
               position: "absolute",
               top: 40,
-              right: (rightCollapsed ? 0 : 260) + 8,
+              right: hudRight + 8,
               zIndex: 800,
               pointerEvents: "none",
-              fontFamily: "monospace",
+              fontFamily: font.data,
               textAlign: "right",
               transition: "right 0.3s ease",
             }}
           >
-            <div style={{ color: "#00ffff", fontSize: 9 }}>
-              <span style={{ color: "#ff3333" }}>●</span> REC {utcTime}
+            <div style={{ color: color.teal, fontSize: 9 }}>
+              <span style={{ color: color.danger }}>●</span> REC {utcTime}
             </div>
-            <div style={{ color: "rgba(0,255,255,0.5)", fontSize: 8 }}>
+            <div style={{ color: color.text2, fontSize: 8 }}>
               UPD {lastHazardUpdate}
             </div>
           </div>
@@ -1752,17 +1841,17 @@ export default function App() {
             style={{
               position: "absolute",
               bottom: 4,
-              left: (leftCollapsed ? 0 : 270) + 8,
+              left: hudLeft + 8,
               zIndex: 800,
               pointerEvents: "none",
-              fontFamily: "monospace",
+              fontFamily: font.data,
               transition: "left 0.3s ease",
             }}
           >
-            <div style={{ color: "#ff6600", fontSize: 9 }}>
+            <div style={{ color: color.text2, fontSize: 9 }}>
               {toDMS(mapCenter.lat, true)} {toDMS(mapCenter.lng, false)}
             </div>
-            <div style={{ color: "rgba(255,102,0,0.6)", fontSize: 8 }}>
+            <div style={{ color: color.text3, fontSize: 8 }}>
               MGRS: {getMGRS(mapCenter.lat, mapCenter.lng)}
             </div>
           </div>
@@ -1772,18 +1861,18 @@ export default function App() {
             style={{
               position: "absolute",
               bottom: 90,
-              right: (rightCollapsed ? 0 : 260) + 8,
+              right: hudRight + 8,
               zIndex: 800,
               pointerEvents: "none",
-              fontFamily: "monospace",
+              fontFamily: font.data,
               textAlign: "right",
               transition: "right 0.3s ease",
             }}
           >
-            <div style={{ color: "#ff6b35", fontSize: 9 }}>
+            <div style={{ color: color.danger, fontSize: 9 }}>
               {criticalCount} CRITICAL · {severeCount} SEVERE
             </div>
-            <div style={{ color: "rgba(0,255,255,0.6)", fontSize: 8 }}>
+            <div style={{ color: color.text2, fontSize: 8 }}>
               TRACKING {hazards.length} HAZARDS · UPD {lastHazardUpdate}
             </div>
             {weatherOn &&
@@ -1799,7 +1888,7 @@ export default function App() {
                   return d < bd ? w : best;
                 });
                 return (
-                  <div style={{ color: "#aaddff", fontSize: 8, marginTop: 2 }}>
+                  <div style={{ color: color.teal, fontSize: 8, marginTop: 2 }}>
                     {nearest.city}: {nearest.temp.toFixed(0)}°C{" "}
                     {weatherCodeToLabel(nearest.weathercode)}{" "}
                     {nearest.windspeed.toFixed(0)}km/h
@@ -1813,15 +1902,24 @@ export default function App() {
       <div
         onPointerDown={(e) => e.stopPropagation()}
         style={{
-          width: rightCollapsed ? 0 : 260,
-          background: "rgba(0,0,0,0.88)",
-          borderLeft: rightCollapsed
-            ? "none"
-            : "1px solid rgba(0,255,255,0.12)",
-          zIndex: 900,
+          position: isMobile ? "absolute" : "relative",
+          top: 0,
+          bottom: 0,
+          right: 0,
+          width: isMobile ? "min(86vw, 320px)" : rightCollapsed ? 0 : 260,
+          background: color.surface1,
+          borderLeft: rightCollapsed ? "none" : `1px solid ${color.hairline}`,
+          boxShadow:
+            isMobile && !rightCollapsed
+              ? "0 0 40px rgba(0,0,0,0.6)"
+              : undefined,
+          zIndex: isMobile ? 960 : 900,
           overflowY: rightCollapsed ? "hidden" : "auto",
-          overflow: rightCollapsed ? "hidden" : undefined,
-          transition: "width 0.3s ease",
+          overflowX: "hidden",
+          transform: isMobile
+            ? `translateX(${rightCollapsed ? "101%" : "0"})`
+            : undefined,
+          transition: isMobile ? "transform 0.3s ease" : "width 0.3s ease",
           flexShrink: 0,
           pointerEvents: rightCollapsed ? "none" : "auto",
         }}
@@ -1829,12 +1927,12 @@ export default function App() {
         <div
           style={{
             padding: "10px 12px 6px",
-            borderBottom: "1px solid rgba(0,255,255,0.1)",
+            borderBottom: `1px solid ${color.hairline}`,
           }}
         >
           <div
             style={{
-              color: "rgba(0,255,255,0.5)",
+              color: color.text2,
               fontSize: 8,
               letterSpacing: "0.15em",
             }}
@@ -1864,7 +1962,7 @@ export default function App() {
               </button>
               <span
                 style={{
-                  color: "rgba(0,255,255,0.5)",
+                  color: color.text2,
                   fontSize: 8,
                   marginLeft: "auto",
                 }}
@@ -1905,7 +2003,7 @@ export default function App() {
               </button>
               <span
                 style={{
-                  color: "rgba(0,255,255,0.5)",
+                  color: color.text2,
                   fontSize: 8,
                   marginLeft: "auto",
                 }}
@@ -1946,7 +2044,7 @@ export default function App() {
             <div style={{ marginBottom: 12 }}>
               <div
                 style={{
-                  color: "rgba(0,255,255,0.5)",
+                  color: color.text2,
                   fontSize: 7,
                   marginBottom: 4,
                   letterSpacing: "0.1em",
@@ -1965,7 +2063,7 @@ export default function App() {
                 </button>
                 <span
                   style={{
-                    color: "rgba(0,255,255,0.5)",
+                    color: color.text2,
                     fontSize: 8,
                     marginLeft: "auto",
                     alignSelf: "center",
@@ -2014,7 +2112,7 @@ export default function App() {
           <div style={{ marginBottom: 12 }}>
             <div
               style={{
-                color: "rgba(0,255,255,0.5)",
+                color: color.text2,
                 fontSize: 7,
                 marginBottom: 4,
                 letterSpacing: "0.1em",

@@ -36,16 +36,6 @@ export interface FireItem {
   source: string;
 }
 
-export interface DeforestationItem {
-  id: string;
-  lat: number;
-  lng: number;
-  confidence: number;
-  alertDate: string;
-  areaHectares: number;
-  source: string;
-}
-
 // Generic multi-hazard marker (volcano, storm, flood, landslide, …). Rendered
 // as a colour/size-coded blip reusing the earthquake marker vocabulary, so new
 // hazard kinds can appear on the globe without new bespoke geometry.
@@ -62,7 +52,6 @@ interface GlobeViewProps {
   eqData: EqItem[];
   weatherData: WeatherPoint[];
   fireData: FireItem[];
-  deforestationData: DeforestationItem[];
   /** Generic multi-hazard blips (volcano, storm, flood, …). Optional and
    *  additive: omit it and the globe renders exactly as before. */
   hazardData?: HazardMarker[];
@@ -74,13 +63,11 @@ interface GlobeViewProps {
     earthquakes: boolean;
     weather: boolean;
     fires: boolean;
-    deforestation: boolean;
   };
   globeCenter: { lat: number; lng: number };
   targetCenter?: { lat: number; lng: number } | null;
   onEarthquakeClick: (eq: EqItem) => void;
   onFireClick: (f: FireItem) => void;
-  onDeforestationClick: (d: DeforestationItem) => void;
   onHazardClick?: (id: string) => void;
   onCenterChange: (lat: number, lng: number) => void;
   onZoomChange: (distance: number) => void;
@@ -627,82 +614,6 @@ function FireEmber({
   );
 }
 
-// ─── Deforestation patch marker (fading green-to-brown disk) ──────────────────
-
-function DeforestationPatch({
-  item,
-  position,
-  onClick,
-}: {
-  item: DeforestationItem;
-  position: [number, number, number];
-  onClick: () => void;
-}) {
-  // Recency fade: parse alertDate (ISO) → days old → 0 (fresh, green) .. 1 (old, brown)
-  const fade = useMemo(() => {
-    const then = Date.parse(item.alertDate);
-    if (Number.isNaN(then)) return 0.5;
-    const days = (Date.now() - then) / 86_400_000;
-    return Math.max(0, Math.min(1, days / 90));
-  }, [item.alertDate]);
-
-  // Green (recent) → brown (old), OKLCH-ish via hex lerp
-  const green = new THREE.Color("#3a7d2c");
-  const brown = new THREE.Color("#6b4a2b");
-  const color = green.clone().lerp(brown, fade);
-  // Patch size scales with areaHectares (clamped)
-  const radius = 0.006 + Math.min(0.02, Math.sqrt(item.areaHectares) * 0.0015);
-
-  // Orient disk flat against the globe surface
-  const quat = useMemo(() => {
-    const norm = new THREE.Vector3(...position).normalize();
-    return new THREE.Quaternion().setFromUnitVectors(
-      new THREE.Vector3(0, 0, 1),
-      norm,
-    );
-  }, [position]);
-
-  return (
-    <group>
-      <mesh position={position} quaternion={quat} renderOrder={65}>
-        <circleGeometry args={[radius, 16]} />
-        <meshBasicMaterial
-          color={color}
-          transparent
-          opacity={0.55}
-          side={THREE.DoubleSide}
-          depthWrite={false}
-          depthTest={false}
-        />
-      </mesh>
-      {/* Faint ring outline for definition */}
-      <mesh position={position} quaternion={quat} renderOrder={66}>
-        <ringGeometry args={[radius * 0.98, radius, 24]} />
-        <meshBasicMaterial
-          color={color}
-          transparent
-          opacity={0.4}
-          side={THREE.DoubleSide}
-          depthWrite={false}
-          depthTest={false}
-        />
-      </mesh>
-      {/* Invisible hit target */}
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: Three.js mesh */}
-      <mesh
-        position={position}
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          onClick();
-        }}
-      >
-        <sphereGeometry args={[Math.max(0.018, radius), 6, 6]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
-    </group>
-  );
-}
-
 // ─── Generic hazard blip (volcano, storm, flood, landslide, …) ────────────────
 // Reuses the earthquake marker vocabulary (glowing sphere + halo ring) but
 // takes an explicit colour + size so any hazard kind can be plotted uniformly.
@@ -967,14 +878,12 @@ function Earth({
   eqData,
   weatherData,
   fireData,
-  deforestationData,
   hazardData,
   geeTileUrlTemplate,
   geeOpacity,
   layers,
   onEarthquakeClick,
   onFireClick,
-  onDeforestationClick,
   onHazardClick,
   onCenterChange,
   onZoomChange,
@@ -1152,22 +1061,6 @@ function Earth({
                 fire={f}
                 position={[x, y, z]}
                 onClick={() => onFireClick(f)}
-              />
-            );
-          })}
-
-      {/* ── DEFORESTATION (fading green-to-brown patches) ── */}
-      {layers.deforestation &&
-        deforestationData
-          .filter((d) => isVisible(d.lat, d.lng))
-          .map((d) => {
-            const [x, y, z] = latLngToVec3(d.lat, d.lng, 1.0035);
-            return (
-              <DeforestationPatch
-                key={`defor-${d.id}-${d.lat}-${d.lng}`}
-                item={d}
-                position={[x, y, z]}
-                onClick={() => onDeforestationClick(d)}
               />
             );
           })}
