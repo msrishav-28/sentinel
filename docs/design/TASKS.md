@@ -63,17 +63,25 @@ Legend for effort: **S** ≤ half a day · **M** ~1–2 days · **L** multi-day.
 
 ---
 
-## Phase 3 — Implementation (docs-first; starts after Phase 2 sign-off) ⏸
-- ☐ **I1** Land the token layer; wire `index.css` tokens into a typed theme. **M**
-- ☐ **I2** Extract atomic components; retire the `btnStyle` inline pattern. **M**
-- ☐ **I3** Migrate the 121 inline color literals onto tokens, kind by kind. **L**
-- ☐ **I4** Rebuild the shell responsively (D4); implement the mobile bottom sheet. **L**
-- ☐ **I5** Implement the unified watch panel + unified detail/selection model. **M**
-- ☐ **I6** Add empty/error/skeleton states; add `prefers-reduced-motion` gating. **M**
-- ☑ **I7** Removed dead code: deforestation path (both files), unused `.dark`
-  class + dead CSS animations (in the `index.css` rebuild), orphan `GeistMono.woff2`.
+## Phase 3 — Implementation 🔨 mostly complete
+- ☑ **I1** Token layer landed (`theme/tokens.ts` + `index.css` custom properties).
+- ☑ **I2** `SeverityBlip` + `DetailPanel` extracted to `ui/`; `btnStyle` tokenized.
+- ☑ **I3** Inline color literals migrated (`App.tsx` 86 → 5 intentional accent tints;
+  `GlobeView`/`DetailPanel` on tokens); severity ramp reconciled in `types.ts`.
+- ☑ **I4** Responsive shell (D4): mobile overlay drawers + backdrop + touch targets.
+- ◐ **I5** DetailPanel unified + tokenized; full one-selection-state model still open.
+- ◐ **I6** `prefers-reduced-motion` gated (blips + CSS); explicit empty/error/skeleton
+  states still to add.
+- ☑ **I7** Removed dead code: deforestation path (both files), unused `.dark` class +
+  dead CSS animations, orphan `GeistMono.woff2` + `JetBrainsMono.woff2`.
 - ☐ **I8** Perf pass: memoize derived hazard slices; audit poll-loop re-renders. **M**
-- ☐ **I9** Add component/interaction/a11y tests (currently core-only). **M**
+- ◐ **I9** Core suite green (28 tests) incl. `SeverityBlip`; broader component/a11y
+  tests still to add.
+
+### Remaining polish (optional)
+- ☐ **R1** Live-feed signal/noise split — notices stream vs. demoted system log.
+- ☐ **R2** Explicit "all clear / no active hazards" empty state.
+- ☐ **R3** Per-kind globe-marker hue tuning for contrast on space-black.
 
 ---
 

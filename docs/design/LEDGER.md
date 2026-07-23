@@ -17,12 +17,17 @@ and a line to the **Changelog**. When an open question resolves, move it from
 |---|---|
 | Phase 0 — Forensics | ✅ Complete |
 | Phase 1 — Direction | ✅ Confirmed — "Observatory", pushed cinematic (see D7) |
-| Phase 2 — Design system & layout | 🔨 In progress — foundation landed (see D8) |
-| Implementation | 🔨 In progress — build authorized ($500k), foundation committed |
+| Phase 2 — Design system & layout | ✅ Core complete — tokens, components, responsive shell |
+| Implementation | ✅ Migration complete — every surface tokenized, responsive, CI green |
 
-**Next action (team):** build outward onto the foundation — global type/color
-migration, then the left sidebar (living legend), HUD, detail panel, proactive
-cue, and the responsive shell. Open questions Q5/Q7 still carry their defaults.
+**Done:** foundation → living legend → dead-code cleanup → DetailPanel →
+full chrome tokenization (JetBrains retired) → responsive drawers. `App.tsx`
+color literals 86 → 5 (intentional accent tints). Nine commits, all green.
+
+**Remaining polish (optional):** live-feed signal/noise split (notices vs
+system log), an explicit "all clear" empty state, and per-kind globe-marker
+hue tuning. Open questions Q5 (light mode) / Q7 (deforestation) still on
+recorded defaults.
 
 ---
 
@@ -79,3 +84,4 @@ the targeting logic); operator-vs-viewer naming (**default: neutral "watch" lang
 | 2026-07-23 | Cleanup (no orphans): **deforestation path removed end-to-end** (`GlobeView` type/component/prop/render + `App` state/panel/handlers) per Q7; orphaned `GeistMono.woff2` deleted. CI green. |
 | 2026-07-23 | **DetailPanel** extracted from `App.tsx` into a tokenized `ui/DetailPanel.tsx` (Chakra Petch labels, Martian Mono values, popover surface, `.pill` close). Upgrades all three panels at once; `App.tsx` 2057 → 1950 lines. CI green. |
 | 2026-07-23 | **Full chrome tokenization**: brand, HUD status bar + all four corners, sidebars, live feed, right-rail controls, reticle, and the `btnStyle`/`feedTypeColor` helpers migrated onto tokens + the telemetry fonts. `App.tsx` color literals 86 → 5 (the 5 are intentional accent-alpha tints). **JetBrains Mono fully retired** (stack + @font-face + woff2 deleted). CI green. |
+| 2026-07-23 | **Responsive drawers**: on phones/tablets the sidebars become overlay drawers over a full-size globe (was: squeezed to nothing), with a tap-to-dismiss backdrop and enlarged touch-target toggles; HUD stops insetting for them. Verified via headless screenshots at 1440×900 and 390×844. CI green. |
