@@ -12,25 +12,28 @@ Legend for effort: **S** ≤ half a day · **M** ~1–2 days · **L** multi-day.
 - ☑ **F1** Full codebase read; product use-case reverse-engineered. → [`FORENSICS.md`](FORENSICS.md)
 - ☑ **F2** Resolve gating ambiguities with the user (D1–D4). → [`LEDGER.md`](LEDGER.md)
 
-## Phase 1 — Direction ☑ delivered · ⏸ awaiting sign-off
+## Phase 1 — Direction ☑ confirmed
 - ☑ **P1-1** Positioning, principles, 3 visual directions, recommendation. → [`DIRECTION.md`](DIRECTION.md)
-- ☐ **P1-2** ⏸ **User confirms Direction A** (or selects B/C). *Unblocks all of Phase 2.*
-- ☐ **P1-3** ⏸ (optional) User resolves Q5 (light mode) and Q7 (deforestation/GEE).
+- ☑ **P1-2** Direction confirmed — "Observatory" pushed cinematic; type system locked (D7). Validated in a live artifact preview.
+- ☐ **P1-3** ⏸ (optional) User may still overturn Q5 (light mode) / Q7 (deforestation/GEE); defaults hold.
 
 ---
 
-## Phase 2 — Design system & layout ⏸ blocked on P1-2
+## Phase 2 — Design system & layout 🔨 in progress
 
-### Foundations (do first — everything else depends on these)
-- ☐ **P2-1** Token system: semantic **color** tokens (surfaces, instrument-teal
-  primary, severity ramp, warm-amber "noticed" accent, per-kind marker hues
-  normalized for AA). **M**
-- ☐ **P2-2** **Type** scale + dual family (JetBrains Mono for data, humanist sans
-  for reading text) with a hard functional floor; tabular figures. **S**
-- ☐ **P2-3** Spacing, radius (keep 0.25rem), border, shadow, opacity, and **motion**
-  tokens (durations/easings; reduced-motion variants). **S**
-- ☐ **P2-4** Decide token delivery: formalize CSS variables in-house vs. adopt a
-  toolchain (Tailwind + shadcn were the stripped-out scaffold). Record in ledger. **S**
+### Foundations ☑ landed (`theme/tokens.ts` + `index.css` + `ui/SeverityBlip.tsx`)
+- ☑ **P2-1** Token system: semantic **color** tokens (surfaces, instrument-teal
+  primary, severity ramp reconciled in `types.ts`, warm-amber accent). Per-kind
+  marker-hue AA normalization still to do during globe migration.
+- ☑ **P2-2** **Type** system — three faces (Chakra Petch / Martian Mono / Saira +
+  Orbitron alt), embedded as woff2; scale + weights + tracking tokens; 12px floor.
+- ☑ **P2-3** Spacing, radius, motion tokens (durations/easings) + a global
+  reduced-motion guard in `index.css`.
+- ☑ **P2-4** Token delivery decided: **typed `tokens.ts` + CSS custom properties,
+  no framework** (matches the codebase's no-CSS-framework grain). Dead OKLCH token
+  set + unused classes/animations removed.
+- ☑ **P2-1b** Signature component: `SeverityBlip` (Canvas additive-glow, pure
+  tested `blipShape`, reduced-motion aware).
 
 ### Layout architecture
 - ☐ **P2-5** Responsive shell spec: desktop three-column → tablet → **mobile

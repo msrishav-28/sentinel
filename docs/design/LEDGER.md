@@ -16,12 +16,13 @@ and a line to the **Changelog**. When an open question resolves, move it from
 | | |
 |---|---|
 | Phase 0 — Forensics | ✅ Complete |
-| Phase 1 — Direction | ✅ Delivered · awaiting confirmation of Direction A |
-| Phase 2 — Design system & layout | ⏳ Blocked on Direction A sign-off |
-| Implementation | ⏳ Not started (docs-first per D2) |
+| Phase 1 — Direction | ✅ Confirmed — "Observatory", pushed cinematic (see D7) |
+| Phase 2 — Design system & layout | 🔨 In progress — foundation landed (see D8) |
+| Implementation | 🔨 In progress — build authorized ($500k), foundation committed |
 
-**Next action (user):** confirm **Direction A — "Observatory"** (or pick B/C), and
-optionally resolve open questions Q5 and Q7. Then Phase 2 begins.
+**Next action (team):** build outward onto the foundation — global type/color
+migration, then the left sidebar (living legend), HUD, detail panel, proactive
+cue, and the responsive shell. Open questions Q5/Q7 still carry their defaults.
 
 ---
 
@@ -35,6 +36,8 @@ optionally resolve open questions Q5 and Q7. Then Phase 2 begins.
 | D4 | **Platform = fully responsive.** Phone and tablet are first-class targets. | Today the app is a bare globe on phones (both sidebars auto-collapse). | User, Phase 0 Q6 |
 | D5 | **Recommended visual direction = "Observatory"** (refined tactical). *Awaiting user confirmation.* | Only direction that satisfies both halves of D1 while fixing the three worst Phase 0 defects; smallest safe distance from current identity. | Team, [`DIRECTION.md`](DIRECTION.md) §4 |
 | D6 | **Tokens are the source of truth.** Every color/space/type value comes from tokens, not literals. | Phase 0's largest debt: a full OKLCH token set exists in `index.css` but 0 components use it; 121 hardcoded color literals instead. | Team, Phase 0 §3 |
+| D7 | **Direction confirmed and pushed cinematic.** Observatory substrate + JARVIS accent, dialed toward a "cinematic instrument" (HUD framing, planetary-limb glow, title-sequence hero). **Type system = Chakra Petch (chrome) · Martian Mono (telemetry) · Saira (reading) · Orbitron (wordmark alt)** — deliberately not the generic Inter/JetBrains SaaS pairing. Legend indicators = Canvas additive-glow "sensor blips" (not CSS). | User + team, look-&-feel iterations v0.1→v0.3 |
+| D8 | **Build authorized ($500k), foundation-first.** Land the token layer before any screen: embedded fonts, `theme/tokens.ts` (typed source of truth), `index.css` rebuilt onto tokens, and the `SeverityBlip` component. Severity ramp reconciled in the portable core (`types.ts`) so globe + UI agree. | User directive |
 
 ---
 
@@ -70,3 +73,5 @@ the targeting logic); operator-vs-viewer naming (**default: neutral "watch" lang
 | 2026-07-22 | Engagement opened. Phase 0 forensics completed against full codebase; findings ratified. |
 | 2026-07-22 | Decisions D1–D4 locked from user answers; D5–D6 added by team. Open questions Q5, Q7 recorded with defaults. |
 | 2026-07-22 | Phase 1 direction delivered; **Direction A "Observatory"** recommended. Scaffolding created: `CLAUDE.md`, `docs/design/{FORENSICS,DIRECTION,LEDGER,TASKS}.md`. |
+| 2026-07-23 | Look-&-feel iterated in a live artifact preview (v0.1→v0.3). Direction confirmed and pushed cinematic; type system locked (D7). Balanced-AA, fully-responsive, dark-only-v1 all reaffirmed. |
+| 2026-07-23 | **Build kickoff (D8).** Foundation committed: 6 embedded faces, `theme/tokens.ts`, rebuilt `index.css` (dead OKLCH tokens + dead classes/animations removed), `ui/SeverityBlip.tsx` + tests, severity ramp reconciled in `types.ts`. CI green: typecheck · lint · test (28) · build. |

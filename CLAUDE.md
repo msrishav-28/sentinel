@@ -46,9 +46,11 @@ src/frontend/src/
     demo.ts                 seeded offline dataset for ?demo
     gee.ts                  optional Earth Engine overlay client
     *.test.ts               vitest suites (23 tests; core only)
+  theme/tokens.ts           typed design tokens — the single source of truth (color/type/space/motion)
+  ui/                       token-driven component kit (SeverityBlip = the living-legend indicator)
   GlobeView.tsx             the 3D globe: tile LOD engine, camera, per-kind markers, overlay
   App.tsx                   composition, HUD, sidebars, live feed, proactive fly-to
-  index.css                 reset + OKLCH token declarations + a few utility classes
+  index.css                 reset + @font-face + CSS custom properties (mirror tokens.ts) + utilities
   main.tsx                  entry (no router, no StrictMode)
 api/gee-tiles.mjs           optional Vercel serverless GEE tile proxy (degrades to no-op)
 docs/gee.md                 how to enable the Earth Engine overlay
@@ -104,10 +106,14 @@ A product design + engineering review is in progress. Its documents live in
    carry sole meaning.
 3. **Platform = fully responsive** — phone and tablet are first-class, not
    graceful degradation.
-4. **Recommended visual direction = "Observatory"** (refined tactical) — pending
-   final confirmation before Phase 2 (the detailed token/component system).
+4. **Visual direction = confirmed** — "Observatory" pushed toward a **cinematic
+   instrument** (HUD framing, planetary-limb glow, title-sequence hero). Type
+   system: **Chakra Petch** (chrome) · **Martian Mono** (telemetry) · **Saira**
+   (reading) · **Orbitron** (wordmark alt) — not the generic Inter/JetBrains
+   pairing. Legend indicators are Canvas "sensor blips" (`ui/SeverityBlip.tsx`).
 
-If you are implementing UI, **drive every color/space/type value from tokens, not
-literals.** The current code hardcodes ~121 color literals; the redesign's first
-rule is to stop doing that. Do not touch `App.tsx`/`GlobeView.tsx` visuals ahead
-of a confirmed direction — update the ledger and ask first.
+**Foundation is built** (`src/theme/tokens.ts`, `src/index.css`, `src/ui/`). If you
+are implementing UI, **drive every color/space/type value from tokens, not
+literals** — import from `theme/tokens.ts` or use the `--c-*/--f-*/--sev-*` CSS
+vars. The legacy code still hardcodes ~121 color literals; migrate them onto tokens
+as you touch each surface. Keep all four CI gates green before committing.
