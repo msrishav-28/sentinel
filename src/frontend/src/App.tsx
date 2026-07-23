@@ -363,14 +363,17 @@ function weatherCodeToLabel(code: number): string {
 
 function btnStyle(active: boolean): React.CSSProperties {
   return {
-    padding: "3px 8px",
-    fontSize: 8,
+    padding: "4px 9px",
+    fontSize: 9,
+    fontWeight: 600,
     cursor: "pointer",
-    fontFamily: "monospace",
-    letterSpacing: "0.08em",
-    background: active ? "rgba(0,255,255,0.15)" : "rgba(0,0,0,0.4)",
-    border: `1px solid ${active ? "#00ffff" : "rgba(0,255,255,0.2)"}`,
-    color: active ? "#00ffff" : "rgba(0,255,255,0.3)",
+    fontFamily: font.display,
+    letterSpacing: "0.1em",
+    textTransform: "uppercase",
+    borderRadius: 2,
+    background: active ? "rgba(63,184,207,0.18)" : "transparent",
+    border: `1px solid ${active ? color.teal : color.hairlineStrong}`,
+    color: active ? color.cyan : color.text3,
   };
 }
 
@@ -748,11 +751,11 @@ export default function App() {
   }, []);
 
   const feedTypeColor: Record<FeedEvent["type"], string> = {
-    EQ: "#ff4400",
-    WEATHER: "#aaddff",
-    SYSTEM: "rgba(0,255,255,0.4)",
-    FIRE: "#ff5a1f",
-    HAZARD: "#ffaa33",
+    EQ: KIND_META.earthquake.color,
+    WEATHER: color.teal,
+    SYSTEM: color.text3,
+    FIRE: KIND_META.wildfire.color,
+    HAZARD: color.amber,
   };
 
   // Globe container: always a perfect circle using CSS min()
@@ -775,12 +778,12 @@ export default function App() {
       style={{
         width: "100vw",
         height: "100dvh",
-        background: "#000",
+        background: color.ground,
         overflow: "hidden",
         position: "relative",
         display: "flex",
         flexDirection: "row",
-        fontFamily: "'JetBrains Mono', monospace",
+        fontFamily: font.read,
       }}
     >
       {/* ── Sidebar Toggle Buttons (outside sidebars so never clipped) ── */}
@@ -799,8 +802,8 @@ export default function App() {
           transform: "translateY(-50%)",
           width: 20,
           height: 40,
-          background: "rgba(0,0,0,0.88)",
-          border: "1px solid rgba(0,255,255,0.2)",
+          background: color.surface1,
+          border: `1px solid ${color.hairlineStrong}`,
           borderLeft: "none",
           borderRadius: "0 4px 4px 0",
           cursor: "pointer",
@@ -808,7 +811,7 @@ export default function App() {
           alignItems: "center",
           justifyContent: "center",
           zIndex: 950,
-          color: "rgba(0,255,255,0.7)",
+          color: color.text2,
           fontSize: 10,
           padding: 0,
           transition: "left 0.3s ease",
@@ -835,8 +838,8 @@ export default function App() {
           transform: "translateY(-50%)",
           width: 20,
           height: 40,
-          background: "rgba(0,0,0,0.88)",
-          border: "1px solid rgba(0,255,255,0.2)",
+          background: color.surface1,
+          border: `1px solid ${color.hairlineStrong}`,
           borderRight: "none",
           borderRadius: "4px 0 0 4px",
           cursor: "pointer",
@@ -844,7 +847,7 @@ export default function App() {
           alignItems: "center",
           justifyContent: "center",
           zIndex: 950,
-          color: "rgba(0,255,255,0.7)",
+          color: color.text2,
           fontSize: 10,
           padding: 0,
           transition: "right 0.3s ease",
@@ -859,10 +862,8 @@ export default function App() {
         onPointerDown={(e) => e.stopPropagation()}
         style={{
           width: leftCollapsed ? 0 : 270,
-          background: "rgba(0,0,0,0.88)",
-          borderRight: leftCollapsed
-            ? "none"
-            : "1px solid rgba(0,255,255,0.12)",
+          background: color.surface1,
+          borderRight: leftCollapsed ? "none" : `1px solid ${color.hairline}`,
           zIndex: 900,
           overflowY: leftCollapsed ? "hidden" : "auto",
           overflowX: "hidden",
@@ -909,12 +910,12 @@ export default function App() {
         <div
           style={{
             padding: "6px 12px 10px",
-            borderBottom: "1px solid rgba(0,255,255,0.08)",
+            borderBottom: `1px solid ${color.hairline}`,
           }}
         >
           <div
             style={{
-              color: "rgba(0,255,255,0.5)",
+              color: color.text2,
               fontSize: 8,
               letterSpacing: "0.15em",
               marginBottom: 6,
@@ -1009,13 +1010,13 @@ export default function App() {
               alignItems: "center",
               gap: 6,
               padding: "3px 0",
-              borderTop: "1px solid rgba(0,255,255,0.08)",
+              borderTop: `1px solid ${color.hairline}`,
               marginTop: 4,
             }}
           >
             <span
               style={{
-                color: weatherOn ? "#aaddff" : "rgba(0,255,255,0.3)",
+                color: weatherOn ? color.teal : color.text3,
                 fontSize: 11,
                 width: 14,
               }}
@@ -1025,19 +1026,19 @@ export default function App() {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
                 style={{
-                  color: weatherOn ? "#00ffff" : "rgba(0,255,255,0.3)",
+                  color: weatherOn ? color.teal : color.text3,
                   fontSize: 8,
                 }}
               >
                 WEATHER
               </div>
-              <div style={{ color: "rgba(0,255,255,0.3)", fontSize: 7 }}>
+              <div style={{ color: color.text3, fontSize: 7 }}>
                 UPD: {lastWeatherUpdate}
               </div>
             </div>
             <span
               style={{
-                color: weatherOn ? "#aaddff" : "rgba(0,255,255,0.25)",
+                color: weatherOn ? color.teal : color.text3,
                 fontSize: 8,
                 minWidth: 24,
                 textAlign: "right",
@@ -1057,12 +1058,10 @@ export default function App() {
                 padding: "2px 5px",
                 fontSize: 7,
                 cursor: "pointer",
-                fontFamily: "monospace",
-                background: weatherOn
-                  ? "rgba(0,255,255,0.2)"
-                  : "rgba(0,0,0,0.4)",
-                border: `1px solid ${weatherOn ? "#00ffff" : "rgba(0,255,255,0.2)"}`,
-                color: weatherOn ? "#00ffff" : "rgba(0,255,255,0.3)",
+                fontFamily: font.data,
+                background: weatherOn ? color.hairlineStrong : "transparent",
+                border: `1px solid ${weatherOn ? color.teal : color.hairlineStrong}`,
+                color: weatherOn ? color.teal : color.text3,
               }}
             >
               {weatherOn ? "ON" : "OFF"}
@@ -1074,12 +1073,12 @@ export default function App() {
             style={{
               marginTop: 6,
               fontSize: 7,
-              color: "rgba(0,255,255,0.4)",
+              color: color.text3,
               letterSpacing: "0.06em",
             }}
           >
             {DEMO_MODE ? (
-              <span style={{ color: "#ffaa33" }}>◆ DEMO DATA</span>
+              <span style={{ color: color.amber }}>◆ DEMO DATA</span>
             ) : (
               <>
                 SRC USGS {sourceOk.USGS ? "●" : "○"} · EONET{" "}
@@ -1091,7 +1090,7 @@ export default function App() {
         </div>
 
         {/* LIVE FEED */}
-        <div style={{ borderBottom: "1px solid rgba(0,255,255,0.08)" }}>
+        <div style={{ borderBottom: `1px solid ${color.hairline}` }}>
           <button
             type="button"
             onClick={() => setFeedExpanded((e) => !e)}
@@ -1104,13 +1103,13 @@ export default function App() {
               background: "none",
               border: "none",
               cursor: "pointer",
-              color: "rgba(0,255,255,0.7)",
+              color: color.text2,
               fontSize: 9,
               letterSpacing: "0.12em",
             }}
           >
             <span>▶ LIVE FEED</span>
-            <span style={{ color: "#ff3333", fontSize: 7 }}>
+            <span style={{ color: color.danger, fontSize: 7 }}>
               ● {feedExpanded ? "−" : "+"}
             </span>
           </button>
@@ -1125,7 +1124,7 @@ export default function App() {
               {feedEvents.length === 0 && (
                 <div
                   style={{
-                    color: "rgba(0,255,255,0.3)",
+                    color: color.text3,
                     fontSize: 8,
                     padding: "4px 0",
                   }}
@@ -1140,12 +1139,12 @@ export default function App() {
                     display: "flex",
                     gap: 5,
                     padding: "2px 0",
-                    borderBottom: "1px solid rgba(0,255,255,0.04)",
+                    borderBottom: `1px solid ${color.hairline}`,
                   }}
                 >
                   <span
                     style={{
-                      color: "rgba(0,255,255,0.3)",
+                      color: color.text3,
                       fontSize: 6,
                       whiteSpace: "nowrap",
                       paddingTop: 1,
@@ -1165,7 +1164,7 @@ export default function App() {
                   </span>
                   <span
                     style={{
-                      color: "rgba(0,255,255,0.7)",
+                      color: color.text2,
                       fontSize: 7,
                       flex: 1,
                       lineHeight: 1.3,
@@ -1183,7 +1182,7 @@ export default function App() {
         <div
           style={{
             padding: "6px 12px",
-            color: "rgba(0,255,255,0.2)",
+            color: color.hairlineStrong,
             fontSize: 7,
             lineHeight: 1.5,
           }}
@@ -1290,7 +1289,7 @@ export default function App() {
               {/* Top-left bracket */}
               <path
                 d="M4 16 L4 4 L16 4"
-                stroke="rgba(0,255,255,0.75)"
+                stroke={color.cyan}
                 strokeWidth="1.2"
                 fill="none"
                 strokeLinecap="square"
@@ -1298,7 +1297,7 @@ export default function App() {
               {/* Top-right bracket */}
               <path
                 d="M44 4 L56 4 L56 16"
-                stroke="rgba(0,255,255,0.75)"
+                stroke={color.cyan}
                 strokeWidth="1.2"
                 fill="none"
                 strokeLinecap="square"
@@ -1306,7 +1305,7 @@ export default function App() {
               {/* Bottom-left bracket */}
               <path
                 d="M4 44 L4 56 L16 56"
-                stroke="rgba(0,255,255,0.75)"
+                stroke={color.cyan}
                 strokeWidth="1.2"
                 fill="none"
                 strokeLinecap="square"
@@ -1314,7 +1313,7 @@ export default function App() {
               {/* Bottom-right bracket */}
               <path
                 d="M56 44 L56 56 L44 56"
-                stroke="rgba(0,255,255,0.75)"
+                stroke={color.cyan}
                 strokeWidth="1.2"
                 fill="none"
                 strokeLinecap="square"
@@ -1325,7 +1324,7 @@ export default function App() {
                 y1="26"
                 x2="30"
                 y2="22"
-                stroke="rgba(0,255,255,0.9)"
+                stroke={color.cyan}
                 strokeWidth="1"
                 strokeLinecap="square"
               />
@@ -1334,7 +1333,7 @@ export default function App() {
                 y1="34"
                 x2="30"
                 y2="38"
-                stroke="rgba(0,255,255,0.9)"
+                stroke={color.cyan}
                 strokeWidth="1"
                 strokeLinecap="square"
               />
@@ -1343,7 +1342,7 @@ export default function App() {
                 y1="30"
                 x2="22"
                 y2="30"
-                stroke="rgba(0,255,255,0.9)"
+                stroke={color.cyan}
                 strokeWidth="1"
                 strokeLinecap="square"
               />
@@ -1352,25 +1351,19 @@ export default function App() {
                 y1="30"
                 x2="38"
                 y2="30"
-                stroke="rgba(0,255,255,0.9)"
+                stroke={color.cyan}
                 strokeWidth="1"
                 strokeLinecap="square"
               />
               {/* Center dot */}
-              <rect
-                x="29"
-                y="29"
-                width="2"
-                height="2"
-                fill="rgba(0,255,255,0.95)"
-              />
+              <rect x="29" y="29" width="2" height="2" fill={color.cyan} />
               {/* Mid-side tick marks */}
               <line
                 x1="30"
                 y1="10"
                 x2="30"
                 y2="14"
-                stroke="rgba(0,255,255,0.45)"
+                stroke={color.teal}
                 strokeWidth="0.8"
                 strokeLinecap="square"
               />
@@ -1379,7 +1372,7 @@ export default function App() {
                 y1="46"
                 x2="30"
                 y2="50"
-                stroke="rgba(0,255,255,0.45)"
+                stroke={color.teal}
                 strokeWidth="0.8"
                 strokeLinecap="square"
               />
@@ -1388,7 +1381,7 @@ export default function App() {
                 y1="30"
                 x2="14"
                 y2="30"
-                stroke="rgba(0,255,255,0.45)"
+                stroke={color.teal}
                 strokeWidth="0.8"
                 strokeLinecap="square"
               />
@@ -1397,7 +1390,7 @@ export default function App() {
                 y1="30"
                 x2="50"
                 y2="30"
-                stroke="rgba(0,255,255,0.45)"
+                stroke={color.teal}
                 strokeWidth="0.8"
                 strokeLinecap="square"
               />
@@ -1421,7 +1414,9 @@ export default function App() {
           >
             <DetailPanel
               title="⚡ SEISMIC EVENT"
-              accent={selectedEq.mag >= 5 ? "#ff3300" : "#ff6600"}
+              accent={
+                selectedEq.mag >= 5 ? color.danger : KIND_META.earthquake.color
+              }
               rows={[
                 ["MAGNITUDE", `M${selectedEq.mag.toFixed(1)}`],
                 ["LOCATION", selectedEq.place.slice(0, 32)],
@@ -1456,7 +1451,7 @@ export default function App() {
           >
             <DetailPanel
               title="🔥 FIRE DETECTION"
-              accent="#ff5a1f"
+              accent={KIND_META.wildfire.color}
               rows={[
                 ["LAT", `${selectedFire.lat.toFixed(4)}°`],
                 ["LNG", `${selectedFire.lng.toFixed(4)}°`],
@@ -1578,9 +1573,9 @@ export default function App() {
               left: leftCollapsed ? 0 : 270,
               right: rightCollapsed ? 0 : 260,
               zIndex: 1000,
-              color: "#ff6600",
+              color: color.text2,
               fontSize: 9,
-              fontFamily: "monospace",
+              fontFamily: font.data,
               letterSpacing: "0.08em",
               whiteSpace: "nowrap",
               pointerEvents: "none",
@@ -1601,13 +1596,13 @@ export default function App() {
               left: (leftCollapsed ? 0 : 270) + 8,
               zIndex: 800,
               pointerEvents: "none",
-              fontFamily: "monospace",
+              fontFamily: font.data,
               transition: "left 0.3s ease",
             }}
           >
             <div
               style={{
-                color: "#00ffff",
+                color: color.teal,
                 fontSize: 10,
                 marginTop: 2,
                 letterSpacing: "0.15em",
@@ -1617,7 +1612,7 @@ export default function App() {
             </div>
             <div
               style={{
-                color: "rgba(0,255,255,0.7)",
+                color: color.text2,
                 fontSize: 8,
                 marginTop: 1,
               }}
@@ -1635,15 +1630,15 @@ export default function App() {
               right: (rightCollapsed ? 0 : 260) + 8,
               zIndex: 800,
               pointerEvents: "none",
-              fontFamily: "monospace",
+              fontFamily: font.data,
               textAlign: "right",
               transition: "right 0.3s ease",
             }}
           >
-            <div style={{ color: "#00ffff", fontSize: 9 }}>
-              <span style={{ color: "#ff3333" }}>●</span> REC {utcTime}
+            <div style={{ color: color.teal, fontSize: 9 }}>
+              <span style={{ color: color.danger }}>●</span> REC {utcTime}
             </div>
-            <div style={{ color: "rgba(0,255,255,0.5)", fontSize: 8 }}>
+            <div style={{ color: color.text2, fontSize: 8 }}>
               UPD {lastHazardUpdate}
             </div>
           </div>
@@ -1656,14 +1651,14 @@ export default function App() {
               left: (leftCollapsed ? 0 : 270) + 8,
               zIndex: 800,
               pointerEvents: "none",
-              fontFamily: "monospace",
+              fontFamily: font.data,
               transition: "left 0.3s ease",
             }}
           >
-            <div style={{ color: "#ff6600", fontSize: 9 }}>
+            <div style={{ color: color.text2, fontSize: 9 }}>
               {toDMS(mapCenter.lat, true)} {toDMS(mapCenter.lng, false)}
             </div>
-            <div style={{ color: "rgba(255,102,0,0.6)", fontSize: 8 }}>
+            <div style={{ color: color.text3, fontSize: 8 }}>
               MGRS: {getMGRS(mapCenter.lat, mapCenter.lng)}
             </div>
           </div>
@@ -1676,15 +1671,15 @@ export default function App() {
               right: (rightCollapsed ? 0 : 260) + 8,
               zIndex: 800,
               pointerEvents: "none",
-              fontFamily: "monospace",
+              fontFamily: font.data,
               textAlign: "right",
               transition: "right 0.3s ease",
             }}
           >
-            <div style={{ color: "#ff6b35", fontSize: 9 }}>
+            <div style={{ color: color.danger, fontSize: 9 }}>
               {criticalCount} CRITICAL · {severeCount} SEVERE
             </div>
-            <div style={{ color: "rgba(0,255,255,0.6)", fontSize: 8 }}>
+            <div style={{ color: color.text2, fontSize: 8 }}>
               TRACKING {hazards.length} HAZARDS · UPD {lastHazardUpdate}
             </div>
             {weatherOn &&
@@ -1700,7 +1695,7 @@ export default function App() {
                   return d < bd ? w : best;
                 });
                 return (
-                  <div style={{ color: "#aaddff", fontSize: 8, marginTop: 2 }}>
+                  <div style={{ color: color.teal, fontSize: 8, marginTop: 2 }}>
                     {nearest.city}: {nearest.temp.toFixed(0)}°C{" "}
                     {weatherCodeToLabel(nearest.weathercode)}{" "}
                     {nearest.windspeed.toFixed(0)}km/h
@@ -1715,10 +1710,8 @@ export default function App() {
         onPointerDown={(e) => e.stopPropagation()}
         style={{
           width: rightCollapsed ? 0 : 260,
-          background: "rgba(0,0,0,0.88)",
-          borderLeft: rightCollapsed
-            ? "none"
-            : "1px solid rgba(0,255,255,0.12)",
+          background: color.surface1,
+          borderLeft: rightCollapsed ? "none" : `1px solid ${color.hairline}`,
           zIndex: 900,
           overflowY: rightCollapsed ? "hidden" : "auto",
           overflow: rightCollapsed ? "hidden" : undefined,
@@ -1730,12 +1723,12 @@ export default function App() {
         <div
           style={{
             padding: "10px 12px 6px",
-            borderBottom: "1px solid rgba(0,255,255,0.1)",
+            borderBottom: `1px solid ${color.hairline}`,
           }}
         >
           <div
             style={{
-              color: "rgba(0,255,255,0.5)",
+              color: color.text2,
               fontSize: 8,
               letterSpacing: "0.15em",
             }}
@@ -1765,7 +1758,7 @@ export default function App() {
               </button>
               <span
                 style={{
-                  color: "rgba(0,255,255,0.5)",
+                  color: color.text2,
                   fontSize: 8,
                   marginLeft: "auto",
                 }}
@@ -1806,7 +1799,7 @@ export default function App() {
               </button>
               <span
                 style={{
-                  color: "rgba(0,255,255,0.5)",
+                  color: color.text2,
                   fontSize: 8,
                   marginLeft: "auto",
                 }}
@@ -1847,7 +1840,7 @@ export default function App() {
             <div style={{ marginBottom: 12 }}>
               <div
                 style={{
-                  color: "rgba(0,255,255,0.5)",
+                  color: color.text2,
                   fontSize: 7,
                   marginBottom: 4,
                   letterSpacing: "0.1em",
@@ -1866,7 +1859,7 @@ export default function App() {
                 </button>
                 <span
                   style={{
-                    color: "rgba(0,255,255,0.5)",
+                    color: color.text2,
                     fontSize: 8,
                     marginLeft: "auto",
                     alignSelf: "center",
@@ -1915,7 +1908,7 @@ export default function App() {
           <div style={{ marginBottom: 12 }}>
             <div
               style={{
-                color: "rgba(0,255,255,0.5)",
+                color: color.text2,
                 fontSize: 7,
                 marginBottom: 4,
                 letterSpacing: "0.1em",

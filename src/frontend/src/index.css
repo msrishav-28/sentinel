@@ -24,8 +24,7 @@ body,
    display → Chakra Petch (chrome, headers, labels, wordmark)
    data    → Martian Mono  (coords, counts, timestamps)
    read    → Saira         (event titles, prose)
-   alt     → Orbitron      (wordmark alternate)
-   JetBrains Mono is kept while legacy inline styles are migrated. */
+   alt     → Orbitron      (wordmark alternate) */
 @font-face {
   font-family: "Chakra Petch";
   src: url("/assets/fonts/ChakraPetch-600.woff2") format("woff2");
@@ -68,13 +67,6 @@ body,
   font-style: normal;
   font-display: swap;
 }
-@font-face {
-  font-family: "JetBrains Mono";
-  src: url("/assets/fonts/JetBrainsMono.woff2") format("woff2");
-  font-weight: 100 800;
-  font-style: normal;
-  font-display: swap;
-}
 
 /* ── Tokens (mirror src/theme/tokens.ts) ──────────────────────────── */
 :root {
@@ -110,7 +102,7 @@ body,
 
   /* type */
   --f-display: "Chakra Petch", system-ui, sans-serif;
-  --f-data: "Martian Mono", ui-monospace, "JetBrains Mono", monospace;
+  --f-data: "Martian Mono", ui-monospace, monospace;
   --f-read: "Saira", system-ui, -apple-system, sans-serif;
   --f-alt: "Orbitron", "Chakra Petch", sans-serif;
 

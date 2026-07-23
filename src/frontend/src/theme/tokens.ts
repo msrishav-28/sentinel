@@ -42,7 +42,7 @@ export const color = {
 //   alt     → the wordmark alternate (Orbitron)
 export const font = {
   display: "'Chakra Petch', system-ui, sans-serif",
-  data: "'Martian Mono', ui-monospace, 'JetBrains Mono', monospace",
+  data: "'Martian Mono', ui-monospace, monospace",
   read: "'Saira', system-ui, -apple-system, sans-serif",
   alt: "'Orbitron', 'Chakra Petch', sans-serif",
 } as const;
